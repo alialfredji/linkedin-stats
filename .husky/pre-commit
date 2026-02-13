@@ -1,0 +1,2 @@
+# Run lint-staged (includes biome check, secretlint, and type-check)
+pnpm lint-staged
