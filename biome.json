@@ -155,7 +155,7 @@
       "attributePosition": "auto",
       "bracketSpacing": true
     },
-    "globals": []
+    "globals": ["Chart"]
   },
   "html": {
     "formatter": {

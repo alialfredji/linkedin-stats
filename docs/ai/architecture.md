@@ -1,729 +1,230 @@
-# Project Architecture
+# Architecture
 
 ## Overview
 
-This is a TypeScript Node.js boilerplate built on the **Hook App framework**. The architecture is designed around modularity, extensibility, and maintainability using a hooks-based system similar to WordPress, but for Node.js applications.
+`linkedin-stats` is a TypeScript Node.js application built on the **hook-app framework**. It scrapes LinkedIn Creator analytics in parallel using Playwright, persists the results as JSON, and renders a self-contained Chart.js dashboard.
 
-## Architectural Principles
+The entire codebase follows hook-app's event-driven, plugin-style architecture: one **service** provides shared browser infrastructure, four **features** handle all business logic, and they communicate exclusively through hooks and shared context — never via direct imports between features.
 
-### 1. Separation of Concerns
+---
 
-The project separates infrastructure (services) from business logic (features):
+## System flow diagram
 
-- **Services** handle infrastructure concerns (databases, caching, logging, external APIs)
-- **Features** handle business logic and application-specific functionality
-- **Settings** manage configuration
-- **Context** manages shared state
+```mermaid
+flowchart TD
+    ENV[.env and environment variables]
+    ENTRY[src/index.ts - entry point]
 
-### 2. Loose Coupling
+    subgraph LIFECYCLE[hook-app lifecycle]
+        direction TB
 
-Components communicate through hooks rather than direct dependencies:
+        subgraph SVC[Services - infrastructure]
+            BROWSER[browser service - src/services/browser]
+        end
 
-- Features don't directly call other features
-- Custom hooks enable event-driven communication
-- Services provide shared resources via context
-- No tight coupling between modules
+        subgraph FEAT[Features - business logic]
+            direction TB
+            AUTH[linkedin-auth - src/features/linkedin-auth]
+            ANALYTICS[linkedin-analytics - src/features/linkedin-analytics]
+            SCRAPER[linkedin-scraper - src/features/linkedin-scraper]
+            DASHBOARD[dashboard-generator - src/features/dashboard-generator]
+        end
+    end
 
-### 3. High Cohesion
+    subgraph OUT[Outputs]
+        COOKIES[data/session_cookies.json]
+        JSON_OUT[data/analytics-data.json]
+        HTML_OUT[output/dashboard.html]
+        BROWSER_WIN[default browser - auto-opened]
+    end
 
-Each module has a single, well-defined responsibility:
-
-- One feature per folder
-- One service per folder
-- Clear boundaries between modules
-- Self-contained implementations
-
-### 4. Extensibility
-
-New functionality can be added without modifying existing code:
-
-- Add new features by creating new feature modules
-- Add new services by creating new service modules
-- Register custom hooks for cross-module communication
-- Override behavior using hook priorities
-
-## Project Structure
-
-```
-ai-friendly-boilerplate/
-├── src/                          # Source code
-│   ├── features/                 # Business logic features
-│   │   └── feature-example/
-│   │       ├── index.ts          # Feature implementation
-│   │       ├── index.test.ts     # Feature tests
-│   │       ├── handlers.ts       # Handler functions (optional)
-│   │       ├── types.ts          # Type definitions (optional)
-│   │       └── constants.ts      # Constants (optional)
-│   ├── services/                 # Infrastructure services
-│   │   └── database/
-│   │       ├── index.ts          # Service implementation
-│   │       ├── index.test.ts     # Service tests
-│   │       └── client.ts         # Database client (optional)
-│   └── index.ts                  # Application entry point
-│
-├── test/                         # Test files (mirrors src/)
-├── dist/                         # Build output (generated)
-│
-├── docs/                         # Documentation
-│   └── ai/                       # AI agent documentation
-│       ├── hook-app-guide.md
-│       ├── coding-standards.md
-│       ├── testing-guide.md
-│       ├── architecture.md       # This file
-│       └── common-tasks.md
-│
-├── .github/                      # GitHub configuration
-│   └── workflows/                # CI/CD pipelines
-│       └── ci.yml
-│
-├── .husky/                       # Git hooks
-│   └── pre-commit                # Pre-commit validation
-│
-├── AGENTS.md                     # AI agent instructions
-├── opencode.json                 # OpenCode configuration
-├── package.json                  # Dependencies and scripts
-├── tsconfig.json                 # TypeScript configuration
-├── tsconfig.build.json           # Build configuration
-├── biome.json                    # Biome linter/formatter config
-└── vitest.config.ts              # Test configuration
+    ENV --> ENTRY
+    ENTRY --> LIFECYCLE
+    BROWSER -->|browser.context and browser.instance| AUTH
+    AUTH -->|linkedin.page and linkedin.authenticated| ANALYTICS
+    ANALYTICS -->|calls scrapeLinkedInAnalytics| SCRAPER
+    ANALYTICS -->|linkedin-analytics-complete hook| DASHBOARD
+    AUTH --> COOKIES
+    ANALYTICS --> JSON_OUT
+    DASHBOARD --> HTML_OUT
+    DASHBOARD --> BROWSER_WIN
 ```
 
-## Module Architecture
+---
 
-### Entry Point (src/index.ts)
+## Lifecycle sequence
 
-The main entry point initializes the Hook App with settings, services, and features:
+hook-app runs each phase before moving to the next. Services always initialise before features.
 
-```typescript
-import hookApp from '@hook-app';
-import featureExample from './features/feature-example/index.js';
+```mermaid
+sequenceDiagram
+    participant main as src/index.ts
+    participant happ as hook-app
+    participant browser as browser service
+    participant auth as linkedin-auth
+    participant analytics as linkedin-analytics
+    participant scraper as linkedin-scraper
+    participant dash as dashboard-generator
 
-hookApp({
-  settings: {
-    app: {
-      name: 'Simple Hook App',
-      version: '1.0.0',
-    },
-  },
-  features: [featureExample],
-  trace: 'compact',
-})
-  .then(() => {
-    console.log('App started successfully');
-  })
-  .catch((error) => {
-    console.error('Error starting app:', error);
-    process.exit(1);
-  });
+    main->>happ: hookApp(services, features, settings)
+
+    Note over happ,browser: INIT_SERVICE phase
+    happ->>browser: INIT_SERVICE - log init
+
+    Note over happ,browser: START_SERVICE phase
+    happ->>browser: START_SERVICE - launch Chromium
+    browser-->>happ: setContext browser.instance and browser.context
+
+    Note over happ,dash: INIT_FEATURE phase - parallel
+    happ->>auth: INIT_FEATURE - log
+    happ->>analytics: INIT_FEATURE - log and registerHook
+    happ->>dash: INIT_FEATURE - log
+
+    Note over happ,dash: START_FEATURE phase
+    happ->>analytics: START_FEATURE
+    analytics->>happ: createHook.serie RUN_AUTH
+    happ->>auth: RUN_AUTH handler
+
+    alt Path 1 - valid cookies on disk
+        auth-->>auth: inject cookies and validate session
+    else Path 2 - credentials in .env
+        auth-->>auth: fill login form headless
+    else Path 3 - no credentials
+        auth-->>auth: open headed browser, wait for user
+    end
+
+    auth-->>happ: setContext linkedin.page and linkedin.authenticated
+    auth-->>auth: save session_cookies.json
+
+    analytics->>scraper: scrapeLinkedInAnalytics(cookiePath, headless)
+
+    par 3 parallel Playwright sessions
+        scraper-->>scraper: session 1 - content-analytics
+    and
+        scraper-->>scraper: session 2 - audience-analytics
+    and
+        scraper-->>scraper: session 3 - demographic-analytics
+    end
+
+    scraper-->>analytics: LinkedInAnalyticsResult
+    analytics-->>analytics: write data/analytics-data.json
+    analytics->>happ: createHook.sync linkedin-analytics-complete
+    happ->>dash: linkedin-analytics-complete handler
+    dash-->>dash: inject JSON into template.html
+    dash-->>dash: write output/dashboard.html
+    dash-->>dash: open in default browser
+
+    Note over happ,browser: FINISH phase
+    happ->>browser: FINISH - close Chromium
 ```
 
-**Responsibilities:**
-- Initialize Hook App with configuration
-- Register all features and services
-- Handle startup errors
-- Configure tracing level
+---
 
-### Features Directory
+## Module map
 
-Features contain business logic and application-specific functionality.
+### `src/index.ts` — entry point
 
-**Standard Feature Structure:**
-```
-src/features/user-auth/
-├── index.ts          # Main feature export (required)
-├── index.test.ts     # Feature tests
-├── handlers.ts       # Action handlers (optional)
-├── validators.ts     # Validation logic (optional)
-├── types.ts          # Type definitions (optional)
-└── constants.ts      # Constants (optional)
-```
+The **only** file that reads `process.env`. Passes all config as settings into `hookApp()`. Registers the browser service and all four features.
 
-**Feature Characteristics:**
-- Default export implementing RegisterContext
-- Registers actions on lifecycle hooks
-- Can register custom hooks for communication
-- Accesses settings via getConfig
-- Can store state in context
-- Independent and self-contained
+### `src/services/browser/` — Browser service
 
-**Example Feature:**
-```typescript
-import type { RegisterContext } from '@hook-app';
+| Hook | Action |
+|---|---|
+| `$INIT_SERVICE` | Logs initialisation |
+| `$START_SERVICE` | Launches Chromium with anti-detection args; stores `browser.instance`, `browser.context`, `browser.headless` in context |
+| `$FINISH` | Closes the browser cleanly |
 
-const FEATURE_NAME = 'user-auth';
+### `src/features/linkedin-auth/` — Authentication
 
-export default ({ registerAction, registerHook }: RegisterContext) => {
-  registerAction({
-    hook: '$INIT_FEATURE',
-    name: FEATURE_NAME,
-    handler: () => {
-      console.log('[User Auth] Initialized');
-    },
-  });
+Handles the `$RUN_AUTH` custom hook (triggered by `linkedin-analytics`). Implements three fallback paths:
 
-  registerAction({
-    hook: '$START_FEATURE',
-    name: FEATURE_NAME,
-    handler: async ({ getConfig }: RegisterContext) => {
-      const secret = getConfig<string>('auth.secret');
-      // Setup authentication logic
-    },
-  });
-};
-```
+| Path | Trigger | Mechanism |
+|---|---|---|
+| Cookie restore | `session_cookies.json` exists | `browserContext.addCookies()` → navigate to `/feed/` to validate |
+| Credential login | `LINKEDIN_USERNAME` + `LINKEDIN_PASSWORD` set | Fill login form headlessly; security challenge → headed fallback |
+| Manual headed login | No credentials | Close headless browser, relaunch headed, wait for user |
 
-### Services Directory
+Saves the full Playwright `Cookie[]` array to disk after any successful login.
 
-Services handle infrastructure concerns and provide shared resources.
+### `src/features/linkedin-analytics/` — Orchestrator
 
-**Standard Service Structure:**
-```
-src/services/database/
-├── index.ts          # Main service export (required)
-├── index.test.ts     # Service tests
-├── client.ts         # Database client (optional)
-└── queries.ts        # Query builders (optional)
-```
+Runs on `$START_FEATURE`:
+1. Fires `$RUN_AUTH` (sequential via `createHook.serie`)
+2. Calls `scrapeLinkedInAnalytics()` from the scraper feature
+3. Writes `data/analytics-data.json`
+4. Emits `linkedin-analytics-complete` so the dashboard generator picks it up
 
-**Service Characteristics:**
-- Default export implementing RegisterContext
-- Uses $INIT_SERVICE for initialization
-- Uses $START_SERVICE for starting
-- Stores shared resources in context
-- Provides API for features to consume
+Also registers the `linkedin-analytics-complete` custom hook so hook-app knows about it.
 
-**Example Service:**
-```typescript
-import type { RegisterContext } from '@hook-app';
+### `src/features/linkedin-scraper/` — Parallel scraper
 
-const SERVICE_NAME = 'database';
+Pure functions — no hook registrations. Called directly by `linkedin-analytics`.
 
-export default ({ registerAction, setContext }: RegisterContext) => {
-  registerAction({
-    hook: '$INIT_SERVICE',
-    name: SERVICE_NAME,
-    handler: async ({ getConfig, setContext }: RegisterContext) => {
-      const dbUrl = getConfig<string>('database.url');
-      const connection = await createConnection(dbUrl);
-      setContext('database.connection', connection);
-    },
-  });
+Uses `Promise.allSettled` to run three fully independent Playwright sessions simultaneously. A failure in one scraper does not abort the others; errors are collected in `result.errors`.
 
-  registerAction({
-    hook: '$START_SERVICE',
-    name: SERVICE_NAME,
-    handler: async ({ getContext, setContext }: RegisterContext) => {
-      const connection = getContext('database.connection');
-      await connection.connect();
-      setContext('database.ready', true);
-    },
-  });
-};
-```
+| File | Responsibility |
+|---|---|
+| `index.ts` | `scrapeLinkedInAnalytics()` — orchestrates the three sessions |
+| `content-analytics.ts` | Impressions, engagements, engagement rate |
+| `audience-analytics.ts` | Follower growth, lifetime follower count |
+| `demographic-analytics.ts` | Industries, job titles, seniorities, functions, locations |
+| `auth.ts` | `loadCookies()` / `injectCookies()` — per-session cookie injection |
+| `browser.ts` | `createBrowserSession()` — standalone session factory |
+| `types.ts` | All shared TypeScript interfaces |
 
-## Data Flow
+### `src/features/dashboard-generator/` — Dashboard
 
-### Application Lifecycle Flow
+Listens on `linkedin-analytics-complete`. Reads `template.html`, replaces the `__ANALYTICS_DATA__` placeholder with the serialised JSON, writes `output/dashboard.html`, then calls `open()` to launch it in the default browser.
+
+---
+
+## Context keys
+
+All shared state lives in hook-app context (a typed key-value store). Features never import each other's internals.
+
+| Key | Type | Set by | Read by |
+|---|---|---|---|
+| `browser.instance` | `Browser` | browser service | linkedin-auth (to replace with headed on manual login) |
+| `browser.context` | `BrowserContext` | browser service | linkedin-auth (Path 1, 2) |
+| `browser.headless` | `boolean` | browser service | — |
+| `linkedin.page` | `Page` | linkedin-auth | (available for future use) |
+| `linkedin.authenticated` | `boolean` | linkedin-auth | (available for future use) |
+
+---
+
+## Data types
 
 ```
-1. hookApp() called
-   ↓
-2. $START hook
-   ↓
-3. $SETTINGS hook (modify settings)
-   ↓
-4. $INIT_SERVICES (parallel)
-   ↓
-5. $INIT_SERVICE (serie, per service)
-   ↓
-6. $INIT_FEATURES (parallel)
-   ↓
-7. $INIT_FEATURE (serie, per feature)
-   ↓
-8. $START_SERVICES (parallel)
-   ↓
-9. $START_SERVICE (serie, per service)
-   ↓
-10. $START_FEATURES (parallel)
-    ↓
-11. $START_FEATURE (serie, per feature)
-    ↓
-12. $FINISH hook
-    ↓
-13. Application ready
+LinkedInAnalyticsResult
+├── content: ContentAnalytics | null
+│   ├── impressions: DailyMetric[]      { date, value }
+│   ├── engagements: DailyMetric[]
+│   ├── totalImpressions: number
+│   ├── totalEngagements: number
+│   ├── engagementRate: number
+│   └── capturedAt: string
+├── audience: AudienceAnalytics | null
+│   ├── followerGrowth: DailyMetric[]
+│   ├── lifetimeFollowerCount: number
+│   └── capturedAt: string
+├── demographics: DemographicAnalytics | null
+│   ├── industries: DemographicEntry[]  { label, count, percentage }
+│   ├── jobTitles: DemographicEntry[]
+│   ├── locations: DemographicEntry[]
+│   ├── functions: DemographicEntry[]
+│   ├── seniorities: DemographicEntry[]
+│   └── capturedAt: string
+├── scrapedAt: string                   ISO timestamp
+└── errors: string[]                    per-scraper error messages
 ```
 
-### Settings Flow
-
-```
-Initial Settings (from hookApp call)
-   ↓
-$SETTINGS hook (modifications)
-   ↓
-Features/Services access via getConfig()
-   ↓
-Can modify via setConfig()
-   ↓
-Final Settings available in returned object
-```
-
-### Context Flow
-
-```
-Services initialize resources
-   ↓
-Store in context via setContext()
-   ↓
-Features access via getContext()
-   ↓
-Shared state available across modules
-```
-
-### Custom Hook Communication Flow
-
-```
-Feature A registers hook
-   ↓
-Feature A triggers hook via createHook.sync()
-   ↓
-Feature B listens to hook via registerAction()
-   ↓
-Feature B handler executes with hook data
-   ↓
-Loose coupling maintained
-```
-
-## Design Patterns
-
-### 1. Dependency Injection
-
-Services inject dependencies via context:
-
-```typescript
-// Service provides
-setContext('database.client', dbClient);
-
-// Feature consumes
-const dbClient = getContext<DbClient>('database.client');
-```
-
-### 2. Event-Driven Architecture
-
-Custom hooks enable event-driven communication:
-
-```typescript
-// Producer
-createHook.sync('user-created', { user });
-
-// Consumer
-registerAction({
-  hook: '$USER_CREATED',
-  handler: ({ user }) => {
-    sendWelcomeEmail(user);
-  },
-});
-```
-
-### 3. Strategy Pattern
-
-Different execution modes for hooks:
-
-```typescript
-createHook.sync('hook');      // Synchronous
-createHook.serie('hook');     // Sequential async
-createHook.parallel('hook');  // Parallel async
-createHook.waterfall('hook'); // Data pipeline
-```
-
-### 4. Plugin Pattern
-
-Features and services act as plugins:
-
-```typescript
-hookApp({
-  services: [database, cache, logger],
-  features: [userAuth, dataSync, analytics],
-});
-```
-
-### 5. Registry Pattern
-
-Actions register on hooks, forming a registry:
-
-```typescript
-registerAction({
-  hook: '$INIT_FEATURE',
-  name: 'my-feature',
-  priority: 10,
-  handler: () => {},
-});
-```
-
-## Module Communication
-
-### Direct Context Access (Services → Features)
-
-```typescript
-// Service stores
-setContext('cache.client', redisClient);
-
-// Feature retrieves
-const cache = getContext('cache.client');
-```
-
-### Custom Hooks (Feature → Feature)
-
-```typescript
-// Feature A
-registerHook({ DATA_READY: 'data-ready' });
-createHook.sync('data-ready', { data });
-
-// Feature B
-registerAction({
-  hook: '$DATA_READY',
-  handler: ({ data }) => {
-    processData(data);
-  },
-});
-```
-
-### Settings (Configuration)
-
-```typescript
-// Set during initialization
-setConfig('api.url', 'https://api.example.com');
-
-// Access anywhere
-const url = getConfig<string>('api.url');
-```
-
-## Scalability Considerations
-
-### Adding New Features
-
-1. Create new folder in `src/features/`
-2. Implement feature following standard pattern
-3. Export default from index.ts
-4. Import and add to features array in src/index.ts
-5. No changes to existing features required
-
-### Adding New Services
-
-1. Create new folder in `src/services/`
-2. Implement service following standard pattern
-3. Store shared resources in context
-4. Import and add to services array in src/index.ts
-5. Features can access via context
-
-### Feature Dependencies
-
-**Avoid direct dependencies between features:**
-
-```typescript
-// ❌ Bad - direct dependency
-import { processUser } from '../other-feature/index.js';
-
-// ✅ Good - use custom hooks
-registerAction({
-  hook: '$USER_PROCESSED',
-  handler: ({ user }) => {
-    // React to event
-  },
-});
-```
-
-### Service Dependencies
-
-Services should be independent, but can have initialization order:
-
-```typescript
-// Database service initializes first (priority)
-registerAction({
-  hook: '$INIT_SERVICE',
-  name: 'database',
-  priority: 100, // Higher priority = runs first
-  handler: async () => {
-    // Initialize database
-  },
-});
-
-// Cache service can depend on database being ready
-registerAction({
-  hook: '$START_SERVICE',
-  name: 'cache',
-  handler: async ({ getContext }: RegisterContext) => {
-    const dbReady = getContext<boolean>('database.ready');
-    if (!dbReady) throw new Error('Database not ready');
-    // Initialize cache
-  },
-});
-```
-
-## Build and Deployment
-
-### Development Build
-
-```bash
-# TypeScript compilation with tsx (development)
-pnpm dev
-
-# Runs: tsx src/index.ts
-# Hot reload on file changes
-```
-
-### Production Build
-
-```bash
-# TypeScript compilation (production)
-pnpm build
-
-# Runs: tsc --project tsconfig.build.json
-# Output: dist/ directory
-# Creates: dist/index.js and dist/**/*.d.ts
-```
-
-### Build Output Structure
-
-```
-dist/
-├── index.js              # Compiled main entry
-├── index.d.ts            # Type declarations
-├── features/
-│   └── feature-example/
-│       ├── index.js
-│       └── index.d.ts
-└── services/
-    └── ...
-```
-
-### Running Production Build
-
-```bash
-pnpm start
-
-# Runs: node dist/index.js
-```
-
-## Testing Architecture
-
-### Test Organization
-
-Tests mirror source structure:
-
-```
-src/features/user-auth/index.ts
-src/features/user-auth/index.test.ts  ← Tests here
-
-OR
-
-test/features/user-auth/index.test.ts ← Tests here
-```
-
-### Test Types
-
-1. **Unit Tests** - Test individual functions and modules
-2. **Integration Tests** - Test feature interactions via hooks
-3. **End-to-End Tests** - Test complete application flow
-
-### Testing Hooks and Features
-
-```typescript
-import hookApp from '@hook-app';
-import { vi } from 'vitest';
-
-it('should execute feature during lifecycle', async () => {
-  const mockHandler = vi.fn();
-  
-  const testFeature = ({ registerAction }) => {
-    registerAction({
-      hook: '$INIT_FEATURE',
-      handler: mockHandler,
-    });
-  };
-  
-  await hookApp({ features: [testFeature] });
-  
-  expect(mockHandler).toHaveBeenCalled();
-});
-```
-
-## Configuration Management
-
-### Configuration Layers
-
-1. **Default settings** - Hardcoded in hookApp() call
-2. **Environment variables** - Via process.env
-3. **$SETTINGS hook** - Programmatic modifications
-4. **Runtime modifications** - Via setConfig()
-
-```typescript
-hookApp({
-  settings: {
-    app: {
-      name: process.env.APP_NAME || 'Default App',
-      debug: process.env.NODE_ENV === 'development',
-    },
-  },
-  features: [
-    ({ registerAction, setConfig }: RegisterContext) => {
-      registerAction({
-        hook: '$SETTINGS',
-        handler: ({ getConfig, setConfig }: RegisterContext) => {
-          // Modify settings programmatically
-          if (getConfig('app.debug')) {
-            setConfig('logging.level', 'debug');
-          }
-        },
-      });
-    },
-  ],
-});
-```
-
-## Error Handling Strategy
-
-### Service Errors
-
-Services should fail fast during initialization:
-
-```typescript
-registerAction({
-  hook: '$INIT_SERVICE',
-  name: 'database',
-  handler: async () => {
-    try {
-      await connectToDatabase();
-    } catch (error) {
-      console.error('[Database] Failed to connect:', error);
-      throw error; // Application should not start
-    }
-  },
-});
-```
-
-### Feature Errors
-
-Features should handle errors gracefully:
-
-```typescript
-registerAction({
-  hook: '$START_FEATURE',
-  name: 'analytics',
-  handler: async () => {
-    try {
-      await initAnalytics();
-    } catch (error) {
-      console.error('[Analytics] Failed to initialize:', error);
-      // Don't throw - analytics is not critical
-    }
-  },
-});
-```
-
-### Global Error Handler
-
-```typescript
-hookApp({ features })
-  .then(() => {
-    console.log('App started successfully');
-  })
-  .catch((error) => {
-    console.error('Failed to start application:', error);
-    process.exit(1);
-  });
-```
-
-## Performance Considerations
-
-### Parallel Execution
-
-Features and services initialize in parallel by default:
-
-```typescript
-// All $INIT_FEATURES hooks run in parallel
-// All $START_FEATURES hooks run in parallel
-```
-
-### Lazy Loading
-
-Load heavy dependencies only when needed:
-
-```typescript
-registerAction({
-  hook: '$START_FEATURE',
-  name: 'image-processor',
-  handler: async () => {
-    // Only import when feature starts
-    const sharp = await import('sharp');
-    // Use sharp...
-  },
-});
-```
-
-### Caching
-
-Cache expensive computations in context:
-
-```typescript
-registerAction({
-  hook: '$INIT_SERVICE',
-  handler: ({ setContext }: RegisterContext) => {
-    const expensiveComputation = computeOnce();
-    setContext('cache.computed', expensiveComputation);
-  },
-});
-```
-
-## Security Considerations
-
-### Environment Variables
-
-Never commit secrets:
-
-```typescript
-// ✅ Good
-const apiKey = process.env.API_KEY;
-if (!apiKey) throw new Error('API_KEY is required');
-
-// ❌ Bad
-const apiKey = 'hardcoded-secret-key';
-```
-
-### Settings Protection
-
-Don't expose sensitive settings:
-
-```typescript
-// Store sensitive data in context, not settings
-setContext('api.key', process.env.API_KEY);
-
-// Settings are returned from hookApp and may be logged
-```
-
-### Input Validation
-
-Validate all external input:
-
-```typescript
-function validateUserInput(input: unknown): User {
-  if (typeof input !== 'object' || input === null) {
-    throw new ValidationError('Invalid input');
-  }
-  // Validate and return typed object
-  return validatedUser;
-}
-```
-
-## Summary
-
-This architecture provides:
-
-- **Modularity** through features and services
-- **Extensibility** through hooks and actions
-- **Maintainability** through clear separation of concerns
-- **Testability** through isolated, independent modules
-- **Scalability** through loose coupling and plugin architecture
-- **Type Safety** through strict TypeScript
-- **Developer Experience** through clear patterns and conventions
-
-The Hook App framework enables building complex applications with simple, focused modules that communicate through well-defined interfaces.
+---
+
+## Design rules
+
+- **`process.env` only in `src/index.ts`** — everything else uses `getConfig()`
+- **No direct imports between features** — communication via hooks and context only
+- **No `any`, no `@ts-ignore`, no non-null assertions (`!`)**
+- **`.js` extensions on all relative imports** (ESM compatibility)
+- **`$INIT_*` hooks are sync-only** — async work goes in `$START_*`
+- **pnpm only** — never npm or yarn

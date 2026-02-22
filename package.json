@@ -1,5 +1,5 @@
 {
-  "name": "ai-friendly-boilerplate",
+  "name": "linkedin-stats",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -8,6 +8,8 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "dev": "tsx src/index.ts",
+    "view": "tsx --eval \"import('open').then(m => m.default(new URL('./output/dashboard.html', import.meta.url).pathname))\"",
+    "dashboard": "tsx --eval \"import('open').then(m => m.default(new URL('./output/dashboard.html', import.meta.url).pathname))\"",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
@@ -50,6 +52,10 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "hook-app": "^1.0.0"
+    "dotenv": "^17.3.1",
+    "hook-app": "^1.0.0",
+    "open": "^11.0.0",
+    "playwright": "^1.58.2",
+    "zod": "^4.3.6"
   }
 }

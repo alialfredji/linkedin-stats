@@ -1,226 +1,154 @@
-# ai-friendly-boilerplate
+# linkedin-stats
 
-A modern TypeScript boilerplate designed to work seamlessly with AI coding assistants. Built with the hook-app framework for modular, event-driven applications with a feature-based architecture.
+Scrapes your LinkedIn Creator analytics pages in parallel and generates a dark, interactive Chart.js dashboard — all in one `pnpm dev`.
 
-## Overview
+## What it does
 
-This project provides a solid foundation for building Node.js applications with:
-- **AI-Friendly**: Structured agents and conventions for all AI coding tools
-- **Feature-based Architecture**: Modular design using hook-app
-- **Type Safety**: TypeScript with strict mode enabled
-- **Testing**: Comprehensive setup with Vitest
-- **Code Quality**: Biome for fast linting and formatting
-- **Git Hooks**: Automated checks before commits
-- **CI/CD**: GitHub Actions for continuous integration
+1. **Authenticates** to LinkedIn (cookie restore → credential login → manual headed fallback)
+2. **Scrapes 3 analytics pages in parallel** using independent Playwright browser sessions
+   - Content analytics (impressions, engagements)
+   - Audience analytics (follower growth)
+   - Demographic analytics (industries, job titles, seniorities, locations)
+3. **Saves** combined data to `./data/analytics-data.json`
+4. **Generates** a dark Chart.js dashboard at `./output/dashboard.html`
+5. **Auto-opens** the dashboard in your default browser
 
 ## Prerequisites
 
-- Node.js (version specified by package manager)
-- pnpm 10.28.1 (specified as package manager)
+- Node.js 20+
+- pnpm 10.28.1
+- A LinkedIn account with Creator analytics access
 
-## Getting Started
-
-### Installation
+## Setup
 
 ```bash
 pnpm install
+cp .env.example .env
+# Fill in your LinkedIn credentials in .env
 ```
 
-### Development
+### Environment variables
 
-Run the application in development mode with hot reload:
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `LINKEDIN_USERNAME` | No | — | LinkedIn email (skips credential login if unset) |
+| `LINKEDIN_PASSWORD` | No | — | LinkedIn password |
+| `LINKEDIN_COOKIE_PATH` | No | `./data/session_cookies.json` | Where to save/load session cookies |
+| `LINKEDIN_HEADLESS` | No | `true` | Set to `false` to watch the browser |
+| `LINKEDIN_LOGIN_TIMEOUT_SECONDS` | No | `120` | Seconds to wait for manual login |
+
+## Usage
+
+### Scrape & view dashboard
 
 ```bash
 pnpm dev
 ```
 
-### Building
+Authenticates, scrapes, generates `output/dashboard.html`, and opens it automatically.
 
-Compile TypeScript to JavaScript:
+### View existing dashboard (no re-scrape)
+
+```bash
+pnpm view
+# or
+pnpm dashboard
+```
+
+### Build for production
 
 ```bash
 pnpm build
-```
-
-### Running Production Build
-
-```bash
 pnpm start
 ```
 
-## Project Structure
+## Project structure
 
 ```
-ai-friendly-boilerplate/
+linkedin-stats/
 ├── src/
-│   ├── index.ts                    # Application entry point
-│   └── features/                   # Feature modules
-│       └── feature-example/        # Example feature implementation
-│           └── index.ts
-├── dist/                           # Compiled output (generated)
-├── coverage/                       # Test coverage reports (generated)
-├── .github/                        # GitHub configuration
-├── .husky/                         # Git hooks
-├── .vscode/                        # VSCode settings
-├── AGENTS.md                       # AI assistant instructions
-├── TASKS.md                        # Project task tracking
-├── biome.json                      # Biome configuration
-├── tsconfig.json                   # TypeScript configuration
-├── tsconfig.build.json             # Build-specific TypeScript config
-├── tsconfig.test.json              # Test-specific TypeScript config
-├── vitest.config.ts                # Vitest configuration
-├── .secretlintrc.json              # Secret scanning configuration
-└── package.json                    # Project dependencies and scripts
+│   ├── index.ts                              # Entry point — wires all services/features, reads process.env
+│   ├── services/
+│   │   └── browser/
+│   │       └── index.ts                      # Chromium service (anti-detection, shared context)
+│   └── features/
+│       ├── linkedin-auth/
+│       │   └── index.ts                      # 3-path auth: cookies → credentials → manual headed
+│       ├── linkedin-analytics/
+│       │   └── index.ts                      # Orchestrator: triggers auth → scrape → persist → emit
+│       ├── linkedin-scraper/
+│       │   ├── index.ts                      # Parallel Promise.allSettled across 3 sessions
+│       │   ├── content-analytics.ts          # Scrapes impressions & engagement data
+│       │   ├── audience-analytics.ts         # Scrapes follower growth data
+│       │   ├── demographic-analytics.ts      # Scrapes industry/job/seniority/location data
+│       │   ├── auth.ts                       # Cookie loading & injection helpers
+│       │   ├── browser.ts                    # Standalone browser session factory
+│       │   └── types.ts                      # All TypeScript types
+│       └── dashboard-generator/
+│           ├── index.ts                      # Listens on analytics-complete, writes + opens HTML
+│           └── template.html                 # Dark Chart.js 4.x dashboard template
+├── data/
+│   └── session_cookies.json                  # Saved cookies (auto-created, gitignored)
+├── output/
+│   └── dashboard.html                        # Generated dashboard (auto-created)
+├── .env                                      # Local secrets (gitignored)
+├── .env.example                              # Template for .env
+└── package.json
 ```
 
-## Available Scripts
+## Authentication flow
 
-### Development
-- `pnpm dev` - Run application in development mode with tsx
-- `pnpm build` - Compile TypeScript to JavaScript
-- `pnpm start` - Run compiled application
+The `linkedin-auth` feature tries three paths in order, stopping at the first success:
 
-### Testing
-- `pnpm test` - Run tests once
-- `pnpm test:watch` - Run tests in watch mode
-- `pnpm test:ui` - Run tests with Vitest UI
-- `pnpm test:coverage` - Generate test coverage report
-- `pnpm test:bench` - Run benchmark tests
+1. **Cookie restore** — loads `session_cookies.json`, injects into the browser context, navigates to `/feed/` to validate. If valid, proceeds immediately (no login required).
+2. **Credential login** — fills the LinkedIn login form with `LINKEDIN_USERNAME` / `LINKEDIN_PASSWORD`. If a security challenge is detected, relaunches a headed browser so you can solve it manually.
+3. **Manual headed login** — opens a visible Chromium window and waits up to `LINKEDIN_LOGIN_TIMEOUT_SECONDS` for you to log in yourself.
 
-### Code Quality
-- `pnpm type-check` - Run TypeScript type checking
-- `pnpm lint` - Lint code with Biome
-- `pnpm lint:fix` - Lint and auto-fix issues
-- `pnpm format` - Format code with Biome
-- `pnpm format:check` - Check code formatting
-- `pnpm check` - Run type-check, tests, and linting all at once
+After any successful login, the full `Cookie[]` array is saved to disk for the next run.
 
-### Git Hooks
-- `pnpm prepare` - Set up Husky git hooks
+## Dashboard charts
 
-## AI Agents
+| Chart | Type | Data source |
+|---|---|---|
+| Daily Impressions | Line | Content analytics |
+| Follower Growth | Line | Audience analytics |
+| Daily Engagements | Grouped bar | Content analytics |
+| Job Titles | Horizontal bar | Demographic analytics |
+| Industries | Doughnut | Demographic analytics |
+| Seniority | Doughnut | Demographic analytics |
+| Locations | Horizontal bar | Demographic analytics |
 
-This project includes specialized AI agents that work with **any** AI coding assistant (Cursor, Claude Code, OpenCode, GitHub Copilot, etc.):
+## Development scripts
 
-- **[Code Review Agent](.ai/agents/code-review.md)** - Review code for quality and conventions
-- **[Testing Agent](.ai/agents/testing.md)** - Generate and maintain tests
-- **[Documentation Agent](.ai/agents/documentation.md)** - Create and update documentation
-- **[Architecture Agent](.ai/agents/architecture.md)** - Design and validate architecture
-- **[Performance Agent](.ai/agents/performance.md)** - Optimize and improve performance
-- **[Security Agent](.ai/agents/security.md)** - Identify and fix security issues
-
-### Using AI Agents
-
-Simply reference an agent when working with your AI assistant:
-
-```
-Use the testing agent to generate tests for src/features/calculator/add.ts
-```
-
-Or:
-
-```
-Follow the code review agent to review my staged changes
-```
-
-The agents provide detailed, step-by-step instructions that any AI assistant can follow. See [.ai/agents/README.md](.ai/agents/README.md) for comprehensive usage guide.
-
-### Example Workflows
-
-**Before committing code:**
-```
-Please follow the code review agent to review my staged changes
-```
-
-**Adding a new feature:**
-```
-1. Use the architecture agent to design the user notification feature
-2. Use the testing agent to generate comprehensive tests
-3. Use the documentation agent to document the new API
-4. Use the security agent to review for vulnerabilities
-```
-
-**Improving performance:**
-```
-Follow the performance agent to optimize src/data/processor.ts
-```
+| Script | Description |
+|---|---|
+| `pnpm dev` | Scrape + generate + open dashboard |
+| `pnpm view` | Open existing dashboard without re-scraping |
+| `pnpm dashboard` | Alias for `pnpm view` |
+| `pnpm build` | Compile TypeScript to `dist/` |
+| `pnpm start` | Run compiled build |
+| `pnpm type-check` | TypeScript type checking |
+| `pnpm lint` | Biome linter |
+| `pnpm lint:fix` | Biome linter with auto-fix |
+| `pnpm format` | Biome formatter |
+| `pnpm test` | Run Vitest tests |
+| `pnpm test:watch` | Vitest in watch mode |
+| `pnpm test:coverage` | Coverage report |
+| `pnpm check` | type-check + tests + lint all at once |
 
 ## Architecture
 
-### Hook-App Framework
+See [`docs/ai/architecture.md`](docs/ai/architecture.md) for the full architecture description including the Mermaid flow diagram.
 
-This project uses [@hook-app](https://www.npmjs.com/package/@hook-app) for a hook-based architecture that allows features to communicate through events.
+## Tech stack
 
-### Features
-
-Features are self-contained modules that register:
-- **Hooks**: Custom events that features can emit
-- **Actions**: Handlers that respond to hooks
-
-Example feature structure (see `src/features/feature-example/`):
-
-```typescript
-export default ({ registerAction, registerHook }: RegisterContext) => {
-  // Register custom hooks
-  registerHook({ EXAMPLE_HOOK: 'feature-hook' });
-
-  // Register actions for lifecycle hooks
-  registerAction({
-    hook: '$INIT_FEATURE',
-    name: 'feature-name',
-    handler: () => {
-      // Initialization logic
-    },
-  });
-};
-```
-
-### Lifecycle Hooks
-
-- `$INIT_FEATURE` - Called when feature is being initialized
-- `$START_FEATURE` - Called when feature starts (has access to full context)
-
-## Adding a New Feature
-
-1. Create a new directory under `src/features/`:
-   ```bash
-   mkdir src/features/my-feature
-   ```
-
-2. Create an `index.ts` file with your feature logic:
-   ```typescript
-   import type { RegisterContext } from '@hook-app';
-
-   const FEATURE_NAME = 'my-feature';
-
-   export default ({ registerAction, registerHook }: RegisterContext) => {
-     registerAction({
-       hook: '$INIT_FEATURE',
-       name: FEATURE_NAME,
-       handler: () => {
-         console.log('[My Feature] Initializing...');
-       },
-     });
-   };
-   ```
-
-3. Register the feature in `src/index.ts`:
-   ```typescript
-   import myFeature from './features/my-feature/index.js';
-
-   hookApp({
-     features: [featureExample, myFeature],
-     // ... other config
-   });
-   ```
-
-
-## Resources
-
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
-- [Vitest Documentation](https://vitest.dev/)
-- [Biome Documentation](https://biomejs.dev/)
-- [Hook App Documentation](https://www.npmjs.com/package/@hook-app)
+- **Runtime**: Node.js + TypeScript (ESM, strict mode)
+- **Framework**: [hook-app](https://www.npmjs.com/package/hook-app) — event-driven hook architecture
+- **Browser automation**: [Playwright](https://playwright.dev/) (Chromium)
+- **Dashboard**: Chart.js 4.x (CDN, no build step)
+- **Linting/Formatting**: Biome
+- **Testing**: Vitest
+- **Git hooks**: Husky + lint-staged
 
 ## License
 

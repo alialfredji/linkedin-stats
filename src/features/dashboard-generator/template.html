@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkedIn Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #1e1e2e;
+      --surface: #181825;
+      --surface2: #313244;
+      --accent: #6366f1;
+      --success: #a6e3a1;
+      --warning: #f9e2af;
+      --danger: #f38ba8;
+      --teal: #94e2d5;
+      --sky: #89dceb;
+      --text: #cdd6f4;
+      --muted: #6c7086;
+      --border: #45475a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-left h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .header-left .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover {
+      opacity: 0.85;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 32px 48px;
+    }
+
+    section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .kpi-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .kpi-unit {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .chart-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .chart-grid-3 {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 1100px) {
+      .chart-grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .chart-grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .chart-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .no-data {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 160px;
+      color: var(--muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    @media print {
+      header {
+        position: static;
+      }
+
+      .btn {
+        display: none;
+      }
+
+      body {
+        background: white;
+        color: #111;
+      }
+
+      .chart-card,
+      .kpi-card {
+        border-color: #ddd;
+        background: #fafafa;
+      }
+    }
+  </style>
+  <script type="text/plain" id="dashboard-data">__ANALYTICS_DATA__</script>
+</head>
+
+<body>
+
+  <header>
+    <div class="header-left">
+      <h1>LinkedIn Analytics</h1>
+      <div class="subtitle" id="scraped-at-label"></div>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-primary" onclick="window.print()">Export PDF</button>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-title">Overview</div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Impressions</div>
+          <div class="kpi-value" id="kpi-impressions">—</div>
+          <div class="kpi-unit">past period</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total Engagements</div>
+          <div class="kpi-value" id="kpi-engagements">—</div>
+          <div class="kpi-unit">past period</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Engagement Rate</div>
+          <div class="kpi-value" id="kpi-eng-rate">—</div>
+          <div class="kpi-unit">%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Lifetime Followers</div>
+          <div class="kpi-value" id="kpi-followers">—</div>
+          <div class="kpi-unit">total</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Trends</div>
+      <div class="chart-grid-2">
+        <div class="chart-card">
+          <div class="chart-card-title">Impressions Over Time</div>
+          <div id="wrap-impressions"><canvas id="chart-impressions" height="200"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Follower Growth</div>
+          <div id="wrap-followers"><canvas id="chart-followers" height="200"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Engagement</div>
+      <div class="chart-card">
+        <div class="chart-card-title">Daily Impressions vs Engagements</div>
+        <div id="wrap-engagement"><canvas id="chart-engagement" height="160"></canvas></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Audience Demographics</div>
+      <div class="chart-grid-3">
+        <div class="chart-card">
+          <div class="chart-card-title">Top Job Titles</div>
+          <div id="wrap-jobtitles"><canvas id="chart-jobtitles" height="260"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Industries</div>
+          <div id="wrap-industries"><canvas id="chart-industries" height="260"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Seniority</div>
+          <div id="wrap-seniority"><canvas id="chart-seniority" height="260"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="chart-card">
+        <div class="chart-card-title">Top Locations</div>
+        <div id="wrap-locations"><canvas id="chart-locations" height="200"></canvas></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const rawEl = document.getElementById('dashboard-data');
+      const raw = rawEl ? rawEl.textContent : '{}';
+      const data = JSON.parse(raw);
+      const content = data.content || null;
+      const audience = data.audience || null;
+      const demographics = data.demographics || null;
+      const scrapedAt = data.scrapedAt || null;
+
+      if (scrapedAt) {
+        const dt = new Date(scrapedAt);
+        const label = dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const el = document.getElementById('scraped-at-label');
+        if (el) el.textContent = 'Last scraped: ' + label;
+      }
+
+      function fmt(n) {
+        if (n == null) return '—';
+        // if (n == null) return '—';
+        // if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+        // if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+        return n.toLocaleString('en-US');
+      }
+      function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+
+      if (content) {
+        setText('kpi-impressions', fmt(content.totalImpressions));
+        setText('kpi-engagements', fmt(content.totalEngagements));
+        setText('kpi-eng-rate', content.engagementRate.toFixed(2));
+      }
+      if (audience) setText('kpi-followers', fmt(audience.lifetimeFollowerCount));
+
+      Chart.defaults.color = '#6c7086';
+      Chart.defaults.borderColor = '#313244';
+      Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+      Chart.defaults.font.size = 12;
+
+      const ACCENT = '#6366f1', SUCCESS = '#a6e3a1', WARNING = '#f9e2af', TEAL = '#94e2d5',
+        SKY = '#89dceb', DANGER = '#f38ba8', MAUVE = '#cba6f7', PEACH = '#fab387';
+      const PALETTE = [ACCENT, SUCCESS, WARNING, TEAL, SKY, DANGER, MAUVE, PEACH, '#89b4fa', '#a6e3a1', '#f9e2af', '#cba6f7'];
+
+      function noData(wrapId) {
+        const wrap = document.getElementById(wrapId);
+        if (wrap) wrap.innerHTML = '<div class="no-data">No data captured</div>';
+      }
+
+      function lineChart(canvasId, labels, datasets) {
+        new Chart(document.getElementById(canvasId), {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: datasets.length > 1 } },
+            scales: {
+              x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
+              y: { grid: { color: '#313244' }, beginAtZero: true }
+            }
+          }
+        });
+      }
+
+      // Impressions line
+      if (content?.impressions && content.impressions.length > 0) {
+        lineChart('chart-impressions',
+          content.impressions.map(function (d) { return d.date; }),
+          [{
+            label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }),
+            borderColor: ACCENT, backgroundColor: ACCENT + '22', fill: true, tension: 0.3, pointRadius: 3
+          }]);
+      } else { noData('wrap-impressions'); }
+
+      // Follower growth line
+      if (audience?.followerGrowth && audience.followerGrowth.length > 0) {
+        lineChart('chart-followers',
+          audience.followerGrowth.map(function (d) { return d.date; }),
+          [{
+            label: 'New Followers', data: audience.followerGrowth.map(function (d) { return d.value; }),
+            borderColor: SUCCESS, backgroundColor: SUCCESS + '22', fill: true, tension: 0.3, pointRadius: 3
+          }]);
+      } else { noData('wrap-followers'); }
+
+      // Engagement bar
+      if (content?.impressions && content.impressions.length > 0) {
+        const labels = content.impressions.map(function (d) { return d.date; });
+        const engVals = content.engagements && content.engagements.length > 0
+          ? labels.map(function (date) {
+            const match = (content.engagements || []).find(function (e) { return e.date === date; });
+            return match ? match.value : 0;
+          })
+          : new Array(labels.length).fill(0);
+        new Chart(document.getElementById('chart-engagement'), {
+          type: 'bar',
+          data: {
+            labels: labels, datasets: [
+              { label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }), backgroundColor: ACCENT + 'bb', borderRadius: 4 },
+              { label: 'Engagements', data: engVals, backgroundColor: SUCCESS + 'bb', borderRadius: 4 }
+            ]
+          },
+          options: {
+            responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: true } },
+            scales: { x: { grid: { color: '#313244' } }, y: { grid: { color: '#313244' }, beginAtZero: true } }
+          }
+        });
+      } else { noData('wrap-engagement'); }
+
+      // Job titles h-bar
+      if (demographics?.jobTitles && demographics.jobTitles.length > 0) {
+        const top = demographics.jobTitles.slice(0, 10);
+        new Chart(document.getElementById('chart-jobtitles'), {
+          type: 'bar',
+          data: {
+            labels: top.map(function (d) { return d.label; }), datasets: [
+              { label: 'Followers (%)', data: top.map(function (d) { return d.percentage; }), backgroundColor: ACCENT + 'cc', borderRadius: 4 }
+            ]
+          },
+          options: {
+            indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+            scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
+          }
+        });
+      } else { noData('wrap-jobtitles'); }
+
+      // Industries doughnut
+      if (demographics?.industries && demographics.industries.length > 0) {
+        const ind = demographics.industries.slice(0, 8);
+        new Chart(document.getElementById('chart-industries'), {
+          type: 'doughnut',
+          data: {
+            labels: ind.map(function (d) { return d.label; }), datasets: [
+              { data: ind.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, ind.length), borderWidth: 0, hoverOffset: 6 }
+            ]
+          },
+          options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+        });
+      } else { noData('wrap-industries'); }
+
+      // Seniority doughnut
+      if (demographics?.seniorities && demographics.seniorities.length > 0) {
+        const sen = demographics.seniorities.slice(0, 8);
+        new Chart(document.getElementById('chart-seniority'), {
+          type: 'doughnut',
+          data: {
+            labels: sen.map(function (d) { return d.label; }), datasets: [
+              { data: sen.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, sen.length), borderWidth: 0, hoverOffset: 6 }
+            ]
+          },
+          options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+        });
+      } else { noData('wrap-seniority'); }
+
+      // Locations h-bar
+      if (demographics?.locations && demographics.locations.length > 0) {
+        const loc = demographics.locations.slice(0, 12);
+        new Chart(document.getElementById('chart-locations'), {
+          type: 'bar',
+          data: {
+            labels: loc.map(function (d) { return d.label; }), datasets: [
+              { label: 'Followers (%)', data: loc.map(function (d) { return d.percentage; }), backgroundColor: TEAL + 'cc', borderRadius: 4 }
+            ]
+          },
+          options: {
+            indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+            scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
+          }
+        });
+      } else { noData('wrap-locations'); }
+
+    })();
+  </script>
+</body>
+
+</html>
