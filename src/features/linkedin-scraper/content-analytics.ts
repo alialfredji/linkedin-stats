@@ -4,54 +4,35 @@
  * Strategy: Navigate to each metric URL directly, then extract data
  * from Highcharts SVG accessibility img alt text.
  * LinkedIn renders each data point as an <img role="img" aria-label="...">.
+ *
+ * All four pages (impressions daily, impressions cumulative,
+ * engagements daily, engagements cumulative) are opened in parallel
+ * within the same browser context for maximum speed.
  */
-import type { Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 
 import { humanDelay, isBlocked } from './browser.js';
 import type { ContentAnalytics, DailyMetric } from './types.js';
 
-const CONTENT_ANALYTICS_URL =
-  'https://www.linkedin.com/analytics/creator/content/?lineChartType=daily&timeRange=past_28_days';
+const BASE_URL = 'https://www.linkedin.com/analytics/creator/content/?timeRange=past_28_days';
+
+const IMPRESSIONS_DAILY_URL = `${BASE_URL}&lineChartType=daily&metricType=IMPRESSIONS`;
+const IMPRESSIONS_CUMULATIVE_URL = `${BASE_URL}&lineChartType=cumulative&metricType=IMPRESSIONS`;
+const ENGAGEMENTS_DAILY_URL = `${BASE_URL}&lineChartType=daily&metricType=ENGAGEMENTS`;
+const ENGAGEMENTS_CUMULATIVE_URL = `${BASE_URL}&lineChartType=cumulative&metricType=ENGAGEMENTS`;
 
 /**
- * Scrape content analytics (impressions + engagements, past 28 days, daily).
+ * Scrape content analytics (impressions + engagements, daily + cumulative, past 28 days).
+ * Opens four pages in parallel within the provided browser context.
  */
-export async function scrapeContentAnalytics(page: Page): Promise<ContentAnalytics> {
-  // Load impressions view
-  await page.goto(`${CONTENT_ANALYTICS_URL}&metricType=IMPRESSIONS`, {
-    waitUntil: 'domcontentloaded',
-  });
-
-  if (isBlocked(page)) {
-    throw new Error('LinkedIn blocked the session. Please refresh your li_at cookie.');
-  }
-
-  await page
-    .waitForFunction(() => document.querySelectorAll('[role="img"][aria-label]').length > 0, {
-      timeout: 20_000,
-    })
-    .catch(() => {
-      /* waitForFunction may time out if chart isn't rendered — proceed anyway */
-    });
-
-  await humanDelay(1500, 2500);
-  const impressions = await extractChartData(page, 'Impressions');
-
-  // Load engagements view via dedicated URL (DOM toggle doesn't re-render in headless)
-  await page.goto(`${CONTENT_ANALYTICS_URL}&metricType=ENGAGEMENTS`, {
-    waitUntil: 'domcontentloaded',
-  });
-
-  await page
-    .waitForFunction(() => document.querySelectorAll('[role="img"][aria-label]').length > 0, {
-      timeout: 20_000,
-    })
-    .catch(() => {
-      /* waitForFunction may time out if chart isn't rendered — proceed anyway */
-    });
-
-  await humanDelay(1500, 2500);
-  const engagements = await extractChartData(page, 'Engagements');
+export async function scrapeContentAnalytics(context: BrowserContext): Promise<ContentAnalytics> {
+  const [impressions, impressionsCumulative, engagements, engagementsCumulative] =
+    await Promise.all([
+      scrapeOnePage(context, IMPRESSIONS_DAILY_URL, 'Impressions'),
+      scrapeOnePage(context, IMPRESSIONS_CUMULATIVE_URL, 'Impressions'),
+      scrapeOnePage(context, ENGAGEMENTS_DAILY_URL, 'Engagements'),
+      scrapeOnePage(context, ENGAGEMENTS_CUMULATIVE_URL, 'Engagements'),
+    ]);
 
   const totalImpressions = impressions.reduce((sum, m) => sum + m.value, 0);
   const totalEngagements = engagements.reduce((sum, m) => sum + m.value, 0);
@@ -64,8 +45,41 @@ export async function scrapeContentAnalytics(page: Page): Promise<ContentAnalyti
     totalImpressions,
     totalEngagements,
     engagementRate,
+    impressionsCumulative,
+    engagementsCumulative,
     capturedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Open a single page in the given context, navigate to the URL, extract chart data, then close.
+ */
+async function scrapeOnePage(
+  context: BrowserContext,
+  url: string,
+  metricName: string
+): Promise<DailyMetric[]> {
+  const page = await context.newPage();
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    if (isBlocked(page)) {
+      throw new Error('LinkedIn blocked the session. Please refresh your li_at cookie.');
+    }
+
+    await page
+      .waitForFunction(() => document.querySelectorAll('[role="img"][aria-label]').length > 0, {
+        timeout: 20_000,
+      })
+      .catch(() => {
+        /* chart may not render in time — proceed with whatever is on the page */
+      });
+
+    await humanDelay(1500, 2500);
+    return await extractChartData(page, metricName);
+  } finally {
+    await page.close();
+  }
 }
 
 /**

@@ -9,44 +9,75 @@
  *
  * Lifetime follower count is extracted from a visible paragraph element
  * that contains only a formatted number (e.g. "1,746").
+ *
+ * Both daily and cumulative pages are opened in parallel within the same context.
  */
-import type { Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 
 import { humanDelay, isBlocked } from './browser.js';
 import type { AudienceAnalytics, DailyMetric } from './types.js';
 
-const AUDIENCE_ANALYTICS_URL =
-  'https://www.linkedin.com/analytics/creator/audience/?lineChartType=daily&timeRange=past_28_days';
+const BASE_URL = 'https://www.linkedin.com/analytics/creator/audience/?timeRange=past_28_days';
+
+const AUDIENCE_DAILY_URL = `${BASE_URL}&lineChartType=daily`;
+const AUDIENCE_CUMULATIVE_URL = `${BASE_URL}&lineChartType=cumulative`;
 
 /**
- * Scrape audience analytics (follower growth past 7 days + lifetime follower count).
+ * Scrape audience analytics (follower growth daily + cumulative + lifetime count).
+ * Opens two pages in parallel within the provided browser context.
  */
-export async function scrapeAudienceAnalytics(page: Page): Promise<AudienceAnalytics> {
-  await page.goto(AUDIENCE_ANALYTICS_URL, { waitUntil: 'domcontentloaded' });
-
-  if (isBlocked(page)) {
-    throw new Error('LinkedIn blocked the session. Please refresh your li_at cookie.');
-  }
-
-  // Wait for Highcharts SVG accessibility paths to render
-  await page
-    .waitForFunction(() => document.querySelectorAll('[role="img"][aria-label]').length > 0, {
-      timeout: 20_000,
-    })
-    .catch(() => {
-      // May not appear if page structure differs — proceed anyway
-    });
-
-  await humanDelay(1500, 2500);
-
-  const followerGrowth = await extractFollowerGrowth(page);
-  const lifetimeFollowerCount = await extractLifetimeFollowerCount(page);
+export async function scrapeAudienceAnalytics(context: BrowserContext): Promise<AudienceAnalytics> {
+  const [dailyResult, cumulativeResult] = await Promise.all([
+    scrapeFollowersPage(context, AUDIENCE_DAILY_URL, true),
+    scrapeFollowersPage(context, AUDIENCE_CUMULATIVE_URL, false),
+  ]);
 
   return {
-    followerGrowth,
-    lifetimeFollowerCount,
+    followerGrowth: dailyResult.growth,
+    followerGrowthCumulative: cumulativeResult.growth,
+    lifetimeFollowerCount: dailyResult.lifetime,
     capturedAt: new Date().toISOString(),
   };
+}
+
+interface FollowersPageResult {
+  growth: DailyMetric[];
+  lifetime: number;
+}
+
+/**
+ * Open a single audience page, extract follower growth data and optionally the lifetime count.
+ */
+async function scrapeFollowersPage(
+  context: BrowserContext,
+  url: string,
+  extractLifetime: boolean
+): Promise<FollowersPageResult> {
+  const page = await context.newPage();
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    if (isBlocked(page)) {
+      throw new Error('LinkedIn blocked the session. Please refresh your li_at cookie.');
+    }
+
+    await page
+      .waitForFunction(() => document.querySelectorAll('[role="img"][aria-label]').length > 0, {
+        timeout: 20_000,
+      })
+      .catch(() => {
+        // May not appear if page structure differs — proceed anyway
+      });
+
+    await humanDelay(1500, 2500);
+
+    const growth = await extractFollowerGrowth(page);
+    const lifetime = extractLifetime ? await extractLifetimeFollowerCount(page) : 0;
+
+    return { growth, lifetime };
+  } finally {
+    await page.close();
+  }
 }
 
 /**

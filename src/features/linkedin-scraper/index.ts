@@ -41,7 +41,7 @@ export async function scrapeLinkedInAnalytics(
       const session = await createBrowserSession(headless);
       try {
         await injectCookies(session.context, cookies);
-        return await scrapeContentAnalytics(session.page);
+        return await scrapeContentAnalytics(session.context);
       } finally {
         await session.close();
       }
@@ -52,7 +52,7 @@ export async function scrapeLinkedInAnalytics(
       const session = await createBrowserSession(headless);
       try {
         await injectCookies(session.context, cookies);
-        return await scrapeAudienceAnalytics(session.page);
+        return await scrapeAudienceAnalytics(session.context);
       } finally {
         await session.close();
       }

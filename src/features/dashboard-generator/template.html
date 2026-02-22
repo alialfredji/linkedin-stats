@@ -178,10 +178,52 @@
       padding: 20px 24px;
     }
 
+    .chart-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+
     .chart-card-title {
       font-size: 13px;
       font-weight: 600;
-      margin-bottom: 16px;
+    }
+
+    .toggle-group {
+      display: flex;
+      gap: 4px;
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 3px;
+      flex-shrink: 0;
+    }
+
+    .toggle-btn {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .toggle-btn:hover:not(:disabled) {
+      color: var(--text);
+    }
+
+    .toggle-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .toggle-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
     }
 
     .no-data {
@@ -200,6 +242,10 @@
       }
 
       .btn {
+        display: none;
+      }
+
+      .toggle-group {
         display: none;
       }
 
@@ -261,11 +307,23 @@
       <div class="section-title">Trends</div>
       <div class="chart-grid-2">
         <div class="chart-card">
-          <div class="chart-card-title">Impressions Over Time</div>
+          <div class="chart-card-header">
+            <div class="chart-card-title">Impressions Over Time</div>
+            <div class="toggle-group">
+              <button class="toggle-btn active" id="toggle-impressions-daily" onclick="setView('impressions', 'daily', this)">Daily</button>
+              <button class="toggle-btn" id="toggle-impressions-cumulative" onclick="setView('impressions', 'cumulative', this)">Cumulative</button>
+            </div>
+          </div>
           <div id="wrap-impressions"><canvas id="chart-impressions" height="200"></canvas></div>
         </div>
         <div class="chart-card">
-          <div class="chart-card-title">Follower Growth</div>
+          <div class="chart-card-header">
+            <div class="chart-card-title">Follower Growth</div>
+            <div class="toggle-group">
+              <button class="toggle-btn active" id="toggle-followers-daily" onclick="setView('followers', 'daily', this)">Daily</button>
+              <button class="toggle-btn" id="toggle-followers-cumulative" onclick="setView('followers', 'cumulative', this)">Cumulative</button>
+            </div>
+          </div>
           <div id="wrap-followers"><canvas id="chart-followers" height="200"></canvas></div>
         </div>
       </div>
@@ -274,7 +332,13 @@
     <section>
       <div class="section-title">Engagement</div>
       <div class="chart-card">
-        <div class="chart-card-title">Daily Impressions vs Engagements</div>
+        <div class="chart-card-header">
+          <div class="chart-card-title">Impressions vs Engagements</div>
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="toggle-engagement-daily" onclick="setEngagementView('daily', this)">Daily</button>
+            <button class="toggle-btn" id="toggle-engagement-cumulative" onclick="setEngagementView('cumulative', this)">Cumulative</button>
+          </div>
+        </div>
         <div id="wrap-engagement"><canvas id="chart-engagement" height="160"></canvas></div>
       </div>
     </section>
@@ -324,9 +388,6 @@
 
       function fmt(n) {
         if (n == null) return '—';
-        // if (n == null) return '—';
-        // if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-        // if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
         return n.toLocaleString('en-US');
       }
       function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
@@ -352,40 +413,142 @@
         if (wrap) wrap.innerHTML = '<div class="no-data">No data captured</div>';
       }
 
-      function lineChart(canvasId, labels, datasets) {
-        new Chart(document.getElementById(canvasId), {
+      // Chart registry — keyed by chart name, holds the Chart.js instance
+      const charts = {};
+
+      // ── Toggle helpers ────────────────────────────────────────────────────────
+
+      // Update active button state within a toggle group
+      function activateToggle(btn) {
+        const group = btn.closest('.toggle-group');
+        if (!group) return;
+        group.querySelectorAll('.toggle-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+      }
+
+      // Switch impressions chart between daily and cumulative
+      window.setView = function (chartKey, view, btn) {
+        activateToggle(btn);
+        const chart = charts[chartKey];
+        if (!chart) return;
+
+        if (chartKey === 'impressions') {
+          const src = view === 'cumulative'
+            ? (content?.impressionsCumulative)
+            : (content?.impressions);
+          if (!src || src.length === 0) return;
+          chart.data.labels = src.map(function (d) { return d.date; });
+          chart.data.datasets[0].data = src.map(function (d) { return d.value; });
+          chart.data.datasets[0].label = view === 'cumulative' ? 'Impressions (Cumulative)' : 'Impressions';
+        } else if (chartKey === 'followers') {
+          const src = view === 'cumulative'
+            ? (audience?.followerGrowthCumulative)
+            : (audience?.followerGrowth);
+          if (!src || src.length === 0) return;
+          chart.data.labels = src.map(function (d) { return d.date; });
+          chart.data.datasets[0].data = src.map(function (d) { return d.value; });
+          chart.data.datasets[0].label = view === 'cumulative' ? 'New Followers (Cumulative)' : 'New Followers';
+        }
+
+        chart.update('active');
+      };
+
+      // Switch engagement chart between daily and cumulative
+      window.setEngagementView = function (view, btn) {
+        activateToggle(btn);
+        const chart = charts['engagement'];
+        if (!chart) return;
+
+        const impSrc = view === 'cumulative'
+          ? (content?.impressionsCumulative)
+          : (content?.impressions);
+        const engSrc = view === 'cumulative'
+          ? (content?.engagementsCumulative)
+          : (content?.engagements);
+
+        if (!impSrc || impSrc.length === 0) return;
+
+        const labels = impSrc.map(function (d) { return d.date; });
+        const engVals = engSrc && engSrc.length > 0
+          ? labels.map(function (date) {
+            const match = engSrc.find(function (e) { return e.date === date; });
+            return match ? match.value : 0;
+          })
+          : new Array(labels.length).fill(0);
+
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = impSrc.map(function (d) { return d.value; });
+        chart.data.datasets[0].label = view === 'cumulative' ? 'Impressions (Cumulative)' : 'Impressions';
+        chart.data.datasets[1].data = engVals;
+        chart.data.datasets[1].label = view === 'cumulative' ? 'Engagements (Cumulative)' : 'Engagements';
+        chart.update('active');
+      };
+
+      // ── Cumulative availability — disable toggle if data absent ──────────────
+
+      function disableCumulativeBtn(id) {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = true;
+      }
+
+      if (!content || !content.impressionsCumulative || content.impressionsCumulative.length === 0) {
+        disableCumulativeBtn('toggle-impressions-cumulative');
+      }
+      if (!audience || !audience.followerGrowthCumulative || audience.followerGrowthCumulative.length === 0) {
+        disableCumulativeBtn('toggle-followers-cumulative');
+      }
+      if (!content || (!content.impressionsCumulative || content.impressionsCumulative.length === 0)) {
+        disableCumulativeBtn('toggle-engagement-cumulative');
+      }
+
+      // ── Chart initialisation ─────────────────────────────────────────────────
+
+      // Impressions line
+      if (content?.impressions && content.impressions.length > 0) {
+        charts['impressions'] = new Chart(document.getElementById('chart-impressions'), {
           type: 'line',
-          data: { labels: labels, datasets: datasets },
+          data: {
+            labels: content.impressions.map(function (d) { return d.date; }),
+            datasets: [{
+              label: 'Impressions',
+              data: content.impressions.map(function (d) { return d.value; }),
+              borderColor: ACCENT, backgroundColor: ACCENT + '22', fill: true, tension: 0.3, pointRadius: 3
+            }]
+          },
           options: {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: datasets.length > 1 } },
+            plugins: { legend: { display: false } },
             scales: {
               x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
               y: { grid: { color: '#313244' }, beginAtZero: true }
             }
           }
         });
-      }
-
-      // Impressions line
-      if (content?.impressions && content.impressions.length > 0) {
-        lineChart('chart-impressions',
-          content.impressions.map(function (d) { return d.date; }),
-          [{
-            label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }),
-            borderColor: ACCENT, backgroundColor: ACCENT + '22', fill: true, tension: 0.3, pointRadius: 3
-          }]);
       } else { noData('wrap-impressions'); }
 
       // Follower growth line
       if (audience?.followerGrowth && audience.followerGrowth.length > 0) {
-        lineChart('chart-followers',
-          audience.followerGrowth.map(function (d) { return d.date; }),
-          [{
-            label: 'New Followers', data: audience.followerGrowth.map(function (d) { return d.value; }),
-            borderColor: SUCCESS, backgroundColor: SUCCESS + '22', fill: true, tension: 0.3, pointRadius: 3
-          }]);
+        charts['followers'] = new Chart(document.getElementById('chart-followers'), {
+          type: 'line',
+          data: {
+            labels: audience.followerGrowth.map(function (d) { return d.date; }),
+            datasets: [{
+              label: 'New Followers',
+              data: audience.followerGrowth.map(function (d) { return d.value; }),
+              borderColor: SUCCESS, backgroundColor: SUCCESS + '22', fill: true, tension: 0.3, pointRadius: 3
+            }]
+          },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
+              y: { grid: { color: '#313244' }, beginAtZero: true }
+            }
+          }
+        });
       } else { noData('wrap-followers'); }
 
       // Engagement bar
@@ -397,17 +560,23 @@
             return match ? match.value : 0;
           })
           : new Array(labels.length).fill(0);
-        new Chart(document.getElementById('chart-engagement'), {
+        charts['engagement'] = new Chart(document.getElementById('chart-engagement'), {
           type: 'bar',
           data: {
-            labels: labels, datasets: [
+            labels: labels,
+            datasets: [
               { label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }), backgroundColor: ACCENT + 'bb', borderRadius: 4 },
               { label: 'Engagements', data: engVals, backgroundColor: SUCCESS + 'bb', borderRadius: 4 }
             ]
           },
           options: {
-            responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: true } },
-            scales: { x: { grid: { color: '#313244' } }, y: { grid: { color: '#313244' }, beginAtZero: true } }
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: true } },
+            scales: {
+              x: { grid: { color: '#313244' } },
+              y: { grid: { color: '#313244' }, beginAtZero: true }
+            }
           }
         });
       } else { noData('wrap-engagement'); }
@@ -418,7 +587,8 @@
         new Chart(document.getElementById('chart-jobtitles'), {
           type: 'bar',
           data: {
-            labels: top.map(function (d) { return d.label; }), datasets: [
+            labels: top.map(function (d) { return d.label; }),
+            datasets: [
               { label: 'Followers (%)', data: top.map(function (d) { return d.percentage; }), backgroundColor: ACCENT + 'cc', borderRadius: 4 }
             ]
           },
@@ -435,7 +605,8 @@
         new Chart(document.getElementById('chart-industries'), {
           type: 'doughnut',
           data: {
-            labels: ind.map(function (d) { return d.label; }), datasets: [
+            labels: ind.map(function (d) { return d.label; }),
+            datasets: [
               { data: ind.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, ind.length), borderWidth: 0, hoverOffset: 6 }
             ]
           },
@@ -449,7 +620,8 @@
         new Chart(document.getElementById('chart-seniority'), {
           type: 'doughnut',
           data: {
-            labels: sen.map(function (d) { return d.label; }), datasets: [
+            labels: sen.map(function (d) { return d.label; }),
+            datasets: [
               { data: sen.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, sen.length), borderWidth: 0, hoverOffset: 6 }
             ]
           },
@@ -463,7 +635,8 @@
         new Chart(document.getElementById('chart-locations'), {
           type: 'bar',
           data: {
-            labels: loc.map(function (d) { return d.label; }), datasets: [
+            labels: loc.map(function (d) { return d.label; }),
+            datasets: [
               { label: 'Followers (%)', data: loc.map(function (d) { return d.percentage; }), backgroundColor: TEAL + 'cc', borderRadius: 4 }
             ]
           },

@@ -18,11 +18,14 @@ export interface ContentAnalytics {
   totalImpressions: number;
   totalEngagements: number;
   engagementRate: number;
+  impressionsCumulative: DailyMetric[];
+  engagementsCumulative: DailyMetric[];
   capturedAt: string;
 }
 
 export interface AudienceAnalytics {
   followerGrowth: DailyMetric[];
+  followerGrowthCumulative: DailyMetric[];
   lifetimeFollowerCount: number;
   capturedAt: string;
 }
