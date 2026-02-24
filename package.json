@@ -11,6 +11,8 @@
     "view": "tsx --eval \"import('open').then(m => m.default(new URL('./output/dashboard.html', import.meta.url).pathname))\"",
     "dashboard": "tsx --eval \"import('open').then(m => m.default(new URL('./output/dashboard.html', import.meta.url).pathname))\"",
     "start": "node dist/index.js",
+    "serve": "node dist/server.js",
+    "scrape": "node dist/scraper-entrypoint.js",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
@@ -41,6 +43,8 @@
     "@biomejs/biome": "2.3.12",
     "@secretlint/quick-start": "^11.3.0",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.0",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.10",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",
@@ -52,8 +56,11 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
     "dotenv": "^17.3.1",
+    "express": "^5.2.1",
     "hook-app": "^1.0.0",
+    "jsonwebtoken": "^9.0.3",
     "open": "^11.0.0",
     "playwright": "^1.58.2",
     "zod": "^4.3.6"

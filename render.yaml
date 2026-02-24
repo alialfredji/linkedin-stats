@@ -1,0 +1,49 @@
+services:
+  # Web dashboard — always-on Express server
+  - type: web
+    name: linkedin-stats-dashboard
+    runtime: node
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node dist/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: DASHBOARD_HTML_PATH
+        value: ./output/dashboard.html
+
+  # Daily scraper — cron job at 09:00 UTC
+  - type: cron
+    name: linkedin-stats-scraper
+    runtime: node
+    plan: starter
+    schedule: "0 9 * * *"
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node dist/scraper-entrypoint.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: LINKEDIN_USERNAME
+        sync: false
+      - key: LINKEDIN_PASSWORD
+        sync: false
+      - key: LINKEDIN_HEADLESS
+        value: "true"
+      - key: LINKEDIN_LOGIN_TIMEOUT_SECONDS
+        value: "120"
+      - key: LINKEDIN_COOKIE_PATH
+        value: ./data/session_cookies.json

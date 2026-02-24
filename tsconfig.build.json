@@ -4,5 +4,6 @@
     "removeComments": true,
     "noEmit": false
   },
+  "include": ["src"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts", "**/__tests__/**"]
 }

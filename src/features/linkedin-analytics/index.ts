@@ -5,7 +5,8 @@
  *   1. Triggers $RUN_AUTH so linkedin-auth validates/restores the session
  *   2. Runs the parallel LinkedIn analytics scraper
  *   3. Persists results to ./data/analytics-data.json
- *   4. Emits linkedin-analytics-complete hook (consumed by dashboard-generator)
+ *   4. Persists results to Supabase (if configured, non-fatal on failure)
+ *   5. Emits linkedin-analytics-complete hook (consumed by dashboard-generator)
  *
  * Configuration (via getConfig):
  *   linkedin.cookiePath  - path to session_cookies.json (default: './data/session_cookies.json')
@@ -14,10 +15,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RegisterContext } from 'hook-app';
 
 import type { LinkedInAnalyticsResult } from '../../features/linkedin-scraper/index.js';
 import { scrapeLinkedInAnalytics } from '../../features/linkedin-scraper/index.js';
+import { storeAnalyticsResult } from '../analytics-storage/store.js';
 
 const FEATURE_NAME = 'linkedin-analytics';
 const OUTPUT_PATH = './data/analytics-data.json';
@@ -41,7 +44,7 @@ export default ({ registerAction, registerHook }: RegisterContext) => {
   registerAction({
     hook: '$START_FEATURE',
     name: FEATURE_NAME,
-    handler: async ({ getConfig, createHook }: RegisterContext) => {
+    handler: async ({ getConfig, getContext, createHook }: RegisterContext) => {
       const cookiePath = getConfig<string>('linkedin.cookiePath', './data/session_cookies.json');
       const headless = getConfig<boolean>('linkedin.headless', true);
 
@@ -62,6 +65,25 @@ export default ({ registerAction, registerHook }: RegisterContext) => {
       mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
       writeFileSync(OUTPUT_PATH, JSON.stringify(result, null, 2), 'utf-8');
       console.log(`[LinkedIn Analytics] Data saved to ${OUTPUT_PATH}`);
+
+      // Persist to Supabase (non-fatal — skip if client not configured)
+      const dbClient = getContext<SupabaseClient | null>('supabase.client');
+      if (dbClient) {
+        try {
+          const { errors: dbErrors } = await storeAnalyticsResult(dbClient, result);
+          if (dbErrors.length > 0) {
+            for (const e of dbErrors) {
+              console.warn('[LinkedIn Analytics] DB store warning:', e);
+            }
+          } else {
+            console.log('[LinkedIn Analytics] Analytics persisted to Supabase');
+          }
+        } catch (err) {
+          console.warn('[LinkedIn Analytics] Failed to persist to Supabase:', err);
+        }
+      } else {
+        console.log('[LinkedIn Analytics] Supabase not configured — skipping DB persist');
+      }
 
       printSummary(result);
 

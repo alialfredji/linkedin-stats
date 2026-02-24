@@ -2,8 +2,9 @@
  * LinkedIn Auth feature.
  *
  * Registers the $RUN_AUTH hook handler. Called by linkedin-analytics before
- * scraping. Implements a 3-path authentication strategy:
+ * scraping. Implements a 4-path authentication strategy:
  *
+ *   0. Load Cookie[] from Supabase session_cookies table (if configured + not expired)
  *   1. Load saved Cookie[] array from cookiePath → inject → validate session
  *   2. Automated credential login (headless) with security-challenge fallback
  *   3. Manual login in headed browser (fallback when no credentials)
@@ -11,6 +12,7 @@
  * After successful auth:
  *   - Sets context: linkedin.page, linkedin.authenticated = true
  *   - Saves full Cookie[] to cookiePath for next run
+ *   - Upserts Cookie[] to Supabase session_cookies (if configured)
  *
  * Configuration (via getConfig):
  *   linkedin.cookiePath             - path to saved cookies JSON
@@ -21,6 +23,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RegisterContext } from 'hook-app';
 import type { BrowserContext, Cookie, Page } from 'playwright';
 import { chromium } from 'playwright';
@@ -28,6 +31,8 @@ import { chromium } from 'playwright';
 const FEATURE_NAME = 'linkedin-auth';
 const LINKEDIN_LOGIN_URL = 'https://www.linkedin.com/login';
 const LINKEDIN_FEED_URL = 'https://www.linkedin.com/feed/';
+const SUPABASE_COOKIE_KEY = 'linkedin';
+const COOKIE_TTL_DAYS = 7;
 
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -52,6 +57,27 @@ export default ({ registerAction }: RegisterContext) => {
       const hasCredentials = username.length > 0 && password.length > 0;
 
       const browserContext = getContext<BrowserContext>('browser.context');
+      const supabaseClient = getContext<SupabaseClient | null>('supabase.client');
+
+      // ── Path 0: restore cookies from Supabase ─────────────────────────────
+      if (supabaseClient) {
+        const dbCookies = await loadCookiesFromSupabase(supabaseClient);
+        if (dbCookies) {
+          console.log('[LinkedIn Auth] Found Supabase cookies, attempting to restore session…');
+          await browserContext.addCookies(dbCookies);
+          const page = await browserContext.newPage();
+          const isValid = await validateSession(page);
+          if (isValid) {
+            console.log('[LinkedIn Auth] Session restored from Supabase successfully');
+            setContext('linkedin.page', page);
+            setContext('linkedin.authenticated', true);
+            return;
+          }
+          console.log('[LinkedIn Auth] Supabase cookies are expired or invalid');
+          await page.close();
+          await browserContext.clearCookies();
+        }
+      }
 
       // ── Path 1: restore saved cookies ─────────────────────────────────────
       const savedCookies = loadCookies(cookiePath);
@@ -67,6 +93,7 @@ export default ({ registerAction }: RegisterContext) => {
           console.log('[LinkedIn Auth] Session restored successfully');
           setContext('linkedin.page', page);
           setContext('linkedin.authenticated', true);
+          if (supabaseClient) await saveCookiesToSupabase(supabaseClient, savedCookies);
           return;
         }
 
@@ -81,6 +108,10 @@ export default ({ registerAction }: RegisterContext) => {
         const page = await loginWithCredentials(browserContext, username, password, loginTimeoutMs);
 
         await saveCookiesFromContext(browserContext, cookiePath);
+        if (supabaseClient) {
+          const cookies = await browserContext.cookies();
+          await saveCookiesToSupabase(supabaseClient, cookies);
+        }
         setContext('linkedin.page', page);
         setContext('linkedin.authenticated', true);
         console.log('[LinkedIn Auth] Automated login complete');
@@ -94,8 +125,13 @@ export default ({ registerAction }: RegisterContext) => {
       );
 
       const page = await loginManually(getContext, setContext, loginTimeoutMs);
+      const finalContext = getContext<BrowserContext>('browser.context');
 
-      await saveCookiesFromContext(getContext<BrowserContext>('browser.context'), cookiePath);
+      await saveCookiesFromContext(finalContext, cookiePath);
+      if (supabaseClient) {
+        const cookies = await finalContext.cookies();
+        await saveCookiesToSupabase(supabaseClient, cookies);
+      }
       setContext('linkedin.page', page);
       setContext('linkedin.authenticated', true);
       console.log('[LinkedIn Auth] Manual login complete');
@@ -256,4 +292,56 @@ async function saveCookiesFromContext(
   const cookies = await browserContext.cookies();
   saveCookies(cookiePath, cookies);
   console.log(`[LinkedIn Auth] Cookies saved to ${cookiePath} (${cookies.length} cookies)`);
+}
+
+// ── Supabase cookie persistence ───────────────────────────────────────────────
+
+async function loadCookiesFromSupabase(client: SupabaseClient): Promise<Cookie[] | null> {
+  try {
+    const { data, error } = await client
+      .from('session_cookies')
+      .select('cookies, expires_at')
+      .eq('key', SUPABASE_COOKIE_KEY)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    const expiresAt = new Date(data.expires_at as string);
+    if (expiresAt <= new Date()) {
+      console.log('[LinkedIn Auth] Supabase cookie record has expired');
+      return null;
+    }
+
+    const cookies = data.cookies as unknown;
+    if (!Array.isArray(cookies) || cookies.length === 0) return null;
+    return cookies as Cookie[];
+  } catch {
+    return null;
+  }
+}
+
+async function saveCookiesToSupabase(client: SupabaseClient, cookies: Cookie[]): Promise<void> {
+  try {
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setUTCDate(expiresAt.getUTCDate() + COOKIE_TTL_DAYS);
+
+    const { error } = await client.from('session_cookies').upsert(
+      {
+        key: SUPABASE_COOKIE_KEY,
+        cookies,
+        saved_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      },
+      { onConflict: 'key' }
+    );
+
+    if (error) {
+      console.warn('[LinkedIn Auth] Failed to save cookies to Supabase:', error.message);
+    } else {
+      console.log('[LinkedIn Auth] Cookies saved to Supabase (expires in 7 days)');
+    }
+  } catch (err) {
+    console.warn('[LinkedIn Auth] Unexpected error saving cookies to Supabase:', err);
+  }
 }

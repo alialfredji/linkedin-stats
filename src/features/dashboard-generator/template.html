@@ -61,6 +61,12 @@
       margin-top: 2px;
     }
 
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -81,6 +87,34 @@
     .btn-primary {
       background: var(--accent);
       color: #fff;
+    }
+
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .date-range-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .date-range-bar input[type="date"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    .date-range-bar input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.6);
+      cursor: pointer;
     }
 
     main {
@@ -236,6 +270,124 @@
       font-style: italic;
     }
 
+    /* ── Login modal ──────────────────────────────────────────────────────────── */
+
+    #login-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #login-overlay.visible {
+      display: flex;
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .login-card h2 {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .login-card p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: -10px;
+    }
+
+    .login-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .login-field label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .login-field input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .login-field input:focus {
+      border-color: var(--accent);
+    }
+
+    .login-error {
+      font-size: 13px;
+      color: var(--danger);
+      display: none;
+    }
+
+    .login-error.visible {
+      display: block;
+    }
+
+    .login-submit {
+      width: 100%;
+      justify-content: center;
+      padding: 10px 16px;
+      font-size: 14px;
+    }
+
+    /* ── Loading spinner ──────────────────────────────────────────────────────── */
+
+    #loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(30, 30, 46, 0.8);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #loading-overlay.visible {
+      display: flex;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--surface2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     @media print {
       header {
         position: static;
@@ -266,12 +418,43 @@
 
 <body>
 
+  <!-- Login modal (shown only in API / server mode) -->
+  <div id="login-overlay">
+    <div class="login-card">
+      <div>
+        <h2>LinkedIn Analytics</h2>
+        <p>Enter your dashboard password to continue.</p>
+      </div>
+      <div class="login-field">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div class="login-error" id="login-error">Incorrect password. Please try again.</div>
+      <button class="btn btn-primary login-submit" id="login-btn">Sign in</button>
+    </div>
+  </div>
+
+  <!-- Loading indicator -->
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <span>Loading analytics…</span>
+  </div>
+
   <header>
     <div class="header-left">
       <h1>LinkedIn Analytics</h1>
       <div class="subtitle" id="scraped-at-label"></div>
     </div>
     <div class="header-right">
+      <!-- Date range picker (shown only in API mode) -->
+      <div class="date-range-bar" id="date-range-bar" style="display:none">
+        <span>From</span>
+        <input type="date" id="date-from" />
+        <span>to</span>
+        <input type="date" id="date-to" />
+        <button class="btn btn-ghost" id="apply-range-btn">Apply</button>
+      </div>
+      <button class="btn btn-ghost" id="logout-btn" style="display:none">Sign out</button>
       <button class="btn btn-primary" onclick="window.print()">Export PDF</button>
     </div>
   </header>
@@ -371,34 +554,22 @@
 
   <script>
     (function () {
+
+      // ── Mode detection ────────────────────────────────────────────────────────
+      // Mode A: placeholder was replaced at build time → local dev, no auth needed
+      // Mode B: placeholder was NOT replaced → server mode, fetch from API
+
       const rawEl = document.getElementById('dashboard-data');
-      const raw = rawEl ? rawEl.textContent : '{}';
-      const data = JSON.parse(raw);
-      const content = data.content || null;
-      const audience = data.audience || null;
-      const demographics = data.demographics || null;
-      const scrapedAt = data.scrapedAt || null;
+      const rawText = rawEl ? rawEl.textContent.trim() : '';
+      const IS_API_MODE = (rawText === '__ANALYTICS_DATA__' || rawText === '');
 
-      if (scrapedAt) {
-        const dt = new Date(scrapedAt);
-        const label = dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const el = document.getElementById('scraped-at-label');
-        if (el) el.textContent = 'Last scraped: ' + label;
-      }
+      // ── Shared chart state ────────────────────────────────────────────────────
+      let charts = {};
+      let currentContent = null;
+      let currentAudience = null;
+      let currentDemographics = null;
 
-      function fmt(n) {
-        if (n == null) return '—';
-        return n.toLocaleString('en-US');
-      }
-      function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
-
-      if (content) {
-        setText('kpi-impressions', fmt(content.totalImpressions));
-        setText('kpi-engagements', fmt(content.totalEngagements));
-        setText('kpi-eng-rate', content.engagementRate.toFixed(2));
-      }
-      if (audience) setText('kpi-followers', fmt(audience.lifetimeFollowerCount));
-
+      // ── Chart colours ─────────────────────────────────────────────────────────
       Chart.defaults.color = '#6c7086';
       Chart.defaults.borderColor = '#313244';
       Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
@@ -408,17 +579,37 @@
         SKY = '#89dceb', DANGER = '#f38ba8', MAUVE = '#cba6f7', PEACH = '#fab387';
       const PALETTE = [ACCENT, SUCCESS, WARNING, TEAL, SKY, DANGER, MAUVE, PEACH, '#89b4fa', '#a6e3a1', '#f9e2af', '#cba6f7'];
 
+      // ── Helpers ───────────────────────────────────────────────────────────────
+
+      function fmt(n) {
+        if (n == null) return '—';
+        return n.toLocaleString('en-US');
+      }
+
+      function setText(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      }
+
       function noData(wrapId) {
         const wrap = document.getElementById(wrapId);
         if (wrap) wrap.innerHTML = '<div class="no-data">No data captured</div>';
       }
 
-      // Chart registry — keyed by chart name, holds the Chart.js instance
-      const charts = {};
+      function resetWrap(wrapId, canvasId, height) {
+        const wrap = document.getElementById(wrapId);
+        if (!wrap) return;
+        wrap.innerHTML = '<canvas id="' + canvasId + '" height="' + height + '"></canvas>';
+      }
+
+      function showLoading(show) {
+        const el = document.getElementById('loading-overlay');
+        if (!el) return;
+        if (show) { el.classList.add('visible'); } else { el.classList.remove('visible'); }
+      }
 
       // ── Toggle helpers ────────────────────────────────────────────────────────
 
-      // Update active button state within a toggle group
       function activateToggle(btn) {
         const group = btn.closest('.toggle-group');
         if (!group) return;
@@ -426,7 +617,6 @@
         btn.classList.add('active');
       }
 
-      // Switch impressions chart between daily and cumulative
       window.setView = function (chartKey, view, btn) {
         activateToggle(btn);
         const chart = charts[chartKey];
@@ -434,37 +624,36 @@
 
         if (chartKey === 'impressions') {
           const src = view === 'cumulative'
-            ? (content?.impressionsCumulative)
-            : (content?.impressions);
+            ? (currentContent?.impressionsCumulative)
+            : (currentContent?.impressions);
           if (!src || src.length === 0) return;
           chart.data.labels = src.map(function (d) { return d.date; });
           chart.data.datasets[0].data = src.map(function (d) { return d.value; });
           chart.data.datasets[0].label = view === 'cumulative' ? 'Impressions (Cumulative)' : 'Impressions';
         } else if (chartKey === 'followers') {
-          const src = view === 'cumulative'
-            ? (audience?.followerGrowthCumulative)
-            : (audience?.followerGrowth);
-          if (!src || src.length === 0) return;
-          chart.data.labels = src.map(function (d) { return d.date; });
-          chart.data.datasets[0].data = src.map(function (d) { return d.value; });
+          const fsrc = view === 'cumulative'
+            ? (currentAudience?.followerGrowthCumulative)
+            : (currentAudience?.followerGrowth);
+          if (!fsrc || fsrc.length === 0) return;
+          chart.data.labels = fsrc.map(function (d) { return d.date; });
+          chart.data.datasets[0].data = fsrc.map(function (d) { return d.value; });
           chart.data.datasets[0].label = view === 'cumulative' ? 'New Followers (Cumulative)' : 'New Followers';
         }
 
         chart.update('active');
       };
 
-      // Switch engagement chart between daily and cumulative
       window.setEngagementView = function (view, btn) {
         activateToggle(btn);
         const chart = charts['engagement'];
         if (!chart) return;
 
         const impSrc = view === 'cumulative'
-          ? (content?.impressionsCumulative)
-          : (content?.impressions);
+          ? (currentContent?.impressionsCumulative)
+          : (currentContent?.impressions);
         const engSrc = view === 'cumulative'
-          ? (content?.engagementsCumulative)
-          : (content?.engagements);
+          ? (currentContent?.engagementsCumulative)
+          : (currentContent?.engagements);
 
         if (!impSrc || impSrc.length === 0) return;
 
@@ -484,168 +673,392 @@
         chart.update('active');
       };
 
-      // ── Cumulative availability — disable toggle if data absent ──────────────
+      // ── Cumulative toggle availability ────────────────────────────────────────
 
-      function disableCumulativeBtn(id) {
-        const btn = document.getElementById(id);
-        if (btn) btn.disabled = true;
+      function updateCumulativeButtons() {
+        function setDisabled(id, disabled) {
+          const btn = document.getElementById(id);
+          if (btn) btn.disabled = disabled;
+        }
+        const noImpCum = !currentContent || !currentContent.impressionsCumulative || currentContent.impressionsCumulative.length === 0;
+        const noFolCum = !currentAudience || !currentAudience.followerGrowthCumulative || currentAudience.followerGrowthCumulative.length === 0;
+        setDisabled('toggle-impressions-cumulative', noImpCum);
+        setDisabled('toggle-followers-cumulative', noFolCum);
+        setDisabled('toggle-engagement-cumulative', noImpCum);
       }
 
-      if (!content || !content.impressionsCumulative || content.impressionsCumulative.length === 0) {
-        disableCumulativeBtn('toggle-impressions-cumulative');
-      }
-      if (!audience || !audience.followerGrowthCumulative || audience.followerGrowthCumulative.length === 0) {
-        disableCumulativeBtn('toggle-followers-cumulative');
-      }
-      if (!content || (!content.impressionsCumulative || content.impressionsCumulative.length === 0)) {
-        disableCumulativeBtn('toggle-engagement-cumulative');
-      }
+      // ── Chart rendering ───────────────────────────────────────────────────────
 
-      // ── Chart initialisation ─────────────────────────────────────────────────
+      function renderCharts() {
+        const content = currentContent;
+        const audience = currentAudience;
+        const demographics = currentDemographics;
 
-      // Impressions line
-      if (content?.impressions && content.impressions.length > 0) {
-        charts['impressions'] = new Chart(document.getElementById('chart-impressions'), {
-          type: 'line',
-          data: {
-            labels: content.impressions.map(function (d) { return d.date; }),
-            datasets: [{
-              label: 'Impressions',
-              data: content.impressions.map(function (d) { return d.value; }),
-              borderColor: ACCENT, backgroundColor: ACCENT + '22', fill: true, tension: 0.3, pointRadius: 3
-            }]
-          },
-          options: {
-            responsive: true,
-            interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
-              y: { grid: { color: '#313244' }, beginAtZero: true }
+        // KPIs
+        if (content) {
+          setText('kpi-impressions', fmt(content.totalImpressions));
+          setText('kpi-engagements', fmt(content.totalEngagements));
+          setText('kpi-eng-rate', content.engagementRate != null ? content.engagementRate.toFixed(2) : '—');
+        }
+        if (audience) setText('kpi-followers', fmt(audience.lifetimeFollowerCount));
+
+        updateCumulativeButtons();
+
+        // Destroy old charts
+        Object.keys(charts).forEach(function (k) {
+          if (charts[k] && typeof charts[k].destroy === 'function') { charts[k].destroy(); }
+        });
+        charts = {};
+
+        // Reset canvases
+        resetWrap('wrap-impressions', 'chart-impressions', 200);
+        resetWrap('wrap-followers', 'chart-followers', 200);
+        resetWrap('wrap-engagement', 'chart-engagement', 160);
+        resetWrap('wrap-jobtitles', 'chart-jobtitles', 260);
+        resetWrap('wrap-industries', 'chart-industries', 260);
+        resetWrap('wrap-seniority', 'chart-seniority', 260);
+        resetWrap('wrap-locations', 'chart-locations', 200);
+
+        // Impressions line
+        if (content?.impressions && content.impressions.length > 0) {
+          charts['impressions'] = new Chart(document.getElementById('chart-impressions'), {
+            type: 'line',
+            data: {
+              labels: content.impressions.map(function (d) { return d.date; }),
+              datasets: [{
+                label: 'Impressions',
+                data: content.impressions.map(function (d) { return d.value; }),
+                borderColor: ACCENT, backgroundColor: ACCENT + '22', fill: true, tension: 0.3, pointRadius: 3
+              }]
+            },
+            options: {
+              responsive: true,
+              interaction: { mode: 'index', intersect: false },
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
+                y: { grid: { color: '#313244' }, beginAtZero: true }
+              }
             }
-          }
-        });
-      } else { noData('wrap-impressions'); }
+          });
+        } else { noData('wrap-impressions'); }
 
-      // Follower growth line
-      if (audience?.followerGrowth && audience.followerGrowth.length > 0) {
-        charts['followers'] = new Chart(document.getElementById('chart-followers'), {
-          type: 'line',
-          data: {
-            labels: audience.followerGrowth.map(function (d) { return d.date; }),
-            datasets: [{
-              label: 'New Followers',
-              data: audience.followerGrowth.map(function (d) { return d.value; }),
-              borderColor: SUCCESS, backgroundColor: SUCCESS + '22', fill: true, tension: 0.3, pointRadius: 3
-            }]
-          },
-          options: {
-            responsive: true,
-            interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
-              y: { grid: { color: '#313244' }, beginAtZero: true }
+        // Follower growth line
+        if (audience?.followerGrowth && audience.followerGrowth.length > 0) {
+          charts['followers'] = new Chart(document.getElementById('chart-followers'), {
+            type: 'line',
+            data: {
+              labels: audience.followerGrowth.map(function (d) { return d.date; }),
+              datasets: [{
+                label: 'New Followers',
+                data: audience.followerGrowth.map(function (d) { return d.value; }),
+                borderColor: SUCCESS, backgroundColor: SUCCESS + '22', fill: true, tension: 0.3, pointRadius: 3
+              }]
+            },
+            options: {
+              responsive: true,
+              interaction: { mode: 'index', intersect: false },
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
+                y: { grid: { color: '#313244' }, beginAtZero: true }
+              }
             }
-          }
-        });
-      } else { noData('wrap-followers'); }
+          });
+        } else { noData('wrap-followers'); }
 
-      // Engagement bar
-      if (content?.impressions && content.impressions.length > 0) {
-        const labels = content.impressions.map(function (d) { return d.date; });
-        const engVals = content.engagements && content.engagements.length > 0
-          ? labels.map(function (date) {
-            const match = (content.engagements || []).find(function (e) { return e.date === date; });
-            return match ? match.value : 0;
-          })
-          : new Array(labels.length).fill(0);
-        charts['engagement'] = new Chart(document.getElementById('chart-engagement'), {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [
-              { label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }), backgroundColor: ACCENT + 'bb', borderRadius: 4 },
-              { label: 'Engagements', data: engVals, backgroundColor: SUCCESS + 'bb', borderRadius: 4 }
-            ]
-          },
-          options: {
-            responsive: true,
-            interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: true } },
-            scales: {
-              x: { grid: { color: '#313244' } },
-              y: { grid: { color: '#313244' }, beginAtZero: true }
+        // Engagement bar
+        if (content?.impressions && content.impressions.length > 0) {
+          const labels = content.impressions.map(function (d) { return d.date; });
+          const engVals = content.engagements && content.engagements.length > 0
+            ? labels.map(function (date) {
+              const match = (content.engagements || []).find(function (e) { return e.date === date; });
+              return match ? match.value : 0;
+            })
+            : new Array(labels.length).fill(0);
+          charts['engagement'] = new Chart(document.getElementById('chart-engagement'), {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                { label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }), backgroundColor: ACCENT + 'bb', borderRadius: 4 },
+                { label: 'Engagements', data: engVals, backgroundColor: SUCCESS + 'bb', borderRadius: 4 }
+              ]
+            },
+            options: {
+              responsive: true,
+              interaction: { mode: 'index', intersect: false },
+              plugins: { legend: { display: true } },
+              scales: {
+                x: { grid: { color: '#313244' } },
+                y: { grid: { color: '#313244' }, beginAtZero: true }
+              }
             }
+          });
+        } else { noData('wrap-engagement'); }
+
+        // Job titles h-bar
+        if (demographics?.jobTitles && demographics.jobTitles.length > 0) {
+          const top = demographics.jobTitles.slice(0, 10);
+          new Chart(document.getElementById('chart-jobtitles'), {
+            type: 'bar',
+            data: {
+              labels: top.map(function (d) { return d.label; }),
+              datasets: [
+                { label: 'Followers (%)', data: top.map(function (d) { return d.percentage; }), backgroundColor: ACCENT + 'cc', borderRadius: 4 }
+              ]
+            },
+            options: {
+              indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+              scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
+            }
+          });
+        } else { noData('wrap-jobtitles'); }
+
+        // Industries doughnut
+        if (demographics?.industries && demographics.industries.length > 0) {
+          const ind = demographics.industries.slice(0, 8);
+          new Chart(document.getElementById('chart-industries'), {
+            type: 'doughnut',
+            data: {
+              labels: ind.map(function (d) { return d.label; }),
+              datasets: [
+                { data: ind.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, ind.length), borderWidth: 0, hoverOffset: 6 }
+              ]
+            },
+            options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+          });
+        } else { noData('wrap-industries'); }
+
+        // Seniority doughnut
+        if (demographics?.seniorities && demographics.seniorities.length > 0) {
+          const sen = demographics.seniorities.slice(0, 8);
+          new Chart(document.getElementById('chart-seniority'), {
+            type: 'doughnut',
+            data: {
+              labels: sen.map(function (d) { return d.label; }),
+              datasets: [
+                { data: sen.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, sen.length), borderWidth: 0, hoverOffset: 6 }
+              ]
+            },
+            options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+          });
+        } else { noData('wrap-seniority'); }
+
+        // Locations h-bar
+        if (demographics?.locations && demographics.locations.length > 0) {
+          const loc = demographics.locations.slice(0, 12);
+          new Chart(document.getElementById('chart-locations'), {
+            type: 'bar',
+            data: {
+              labels: loc.map(function (d) { return d.label; }),
+              datasets: [
+                { label: 'Followers (%)', data: loc.map(function (d) { return d.percentage; }), backgroundColor: TEAL + 'cc', borderRadius: 4 }
+              ]
+            },
+            options: {
+              indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+              scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
+            }
+          });
+        } else { noData('wrap-locations'); }
+      }
+
+      // ── Mode A: embedded JSON (local dev) ─────────────────────────────────────
+
+      function initModeA() {
+        let data = {};
+        try { data = JSON.parse(rawText); } catch (_e) { /* empty */ }
+        currentContent = data.content || null;
+        currentAudience = data.audience || null;
+        currentDemographics = data.demographics || null;
+
+        const scrapedAt = data.scrapedAt || null;
+        if (scrapedAt) {
+          const dt = new Date(scrapedAt);
+          const label = dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          setText('scraped-at-label', 'Last scraped: ' + label);
+        }
+
+        renderCharts();
+      }
+
+      // ── Mode B: API fetch (server / deployed) ─────────────────────────────────
+
+      function getToken() {
+        return localStorage.getItem('dashboard_token');
+      }
+
+      function clearToken() {
+        localStorage.removeItem('dashboard_token');
+      }
+
+      function showLogin() {
+        const overlay = document.getElementById('login-overlay');
+        if (overlay) overlay.classList.add('visible');
+      }
+
+      function hideLogin() {
+        const overlay = document.getElementById('login-overlay');
+        if (overlay) overlay.classList.remove('visible');
+      }
+
+      function showLoginError(msg) {
+        const el = document.getElementById('login-error');
+        if (el) {
+          el.textContent = msg || 'Incorrect password. Please try again.';
+          el.classList.add('visible');
+        }
+      }
+
+      function hideLoginError() {
+        const el = document.getElementById('login-error');
+        if (el) el.classList.remove('visible');
+      }
+
+      function dateString(d) {
+        return d.toISOString().slice(0, 10);
+      }
+
+      function getDefaultRange() {
+        const to = new Date();
+        const from = new Date();
+        from.setDate(from.getDate() - 30);
+        return { from: dateString(from), to: dateString(to) };
+      }
+
+      function initDatePicker() {
+        const bar = document.getElementById('date-range-bar');
+        if (bar) bar.style.display = 'flex';
+        const range = getDefaultRange();
+        const fromEl = document.getElementById('date-from');
+        const toEl = document.getElementById('date-to');
+        if (fromEl) fromEl.value = range.from;
+        if (toEl) toEl.value = range.to;
+        const applyBtn = document.getElementById('apply-range-btn');
+        if (applyBtn) {
+          applyBtn.addEventListener('click', function () {
+            const f = fromEl ? fromEl.value : range.from;
+            const t = toEl ? toEl.value : range.to;
+            loadApiData(f, t);
+          });
+        }
+      }
+
+      async function apiGet(path, token) {
+        const res = await fetch(path, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (res.status === 401) {
+          clearToken();
+          showLogin();
+          throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      }
+
+      async function loadApiData(fromDate, toDate) {
+        const token = getToken();
+        if (!token) { showLogin(); return; }
+        showLoading(true);
+        try {
+          const qs = '?from=' + fromDate + '&to=' + toDate;
+          const results = await Promise.allSettled([
+            apiGet('/api/analytics/content' + qs, token),
+            apiGet('/api/analytics/audience' + qs, token),
+            apiGet('/api/analytics/demographics', token),
+          ]);
+
+          currentContent = results[0].status === 'fulfilled' ? results[0].value : null;
+          currentAudience = results[1].status === 'fulfilled' ? results[1].value : null;
+          currentDemographics = results[2].status === 'fulfilled' ? results[2].value : null;
+
+          // Update subtitle with range
+          setText('scraped-at-label', 'Showing ' + fromDate + ' to ' + toDate);
+
+          renderCharts();
+        } catch (err) {
+          if (err instanceof Error && err.message === 'Unauthorized') return;
+          console.error('Failed to load analytics:', err);
+        } finally {
+          showLoading(false);
+        }
+      }
+
+      async function doLogin(password) {
+        hideLoginError();
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password }),
+          });
+          if (!res.ok) {
+            showLoginError('Incorrect password. Please try again.');
+            return;
           }
-        });
-      } else { noData('wrap-engagement'); }
+          const data = await res.json();
+          localStorage.setItem('dashboard_token', data.token);
+          hideLogin();
+          const range = getDefaultRange();
+          const fromEl = document.getElementById('date-from');
+          const toEl = document.getElementById('date-to');
+          const from = (fromEl?.value) ? fromEl.value : range.from;
+          const to = (toEl?.value) ? toEl.value : range.to;
+          loadApiData(from, to);
+        } catch (_err) {
+          showLoginError('Connection error. Please try again.');
+        }
+      }
 
-      // Job titles h-bar
-      if (demographics?.jobTitles && demographics.jobTitles.length > 0) {
-        const top = demographics.jobTitles.slice(0, 10);
-        new Chart(document.getElementById('chart-jobtitles'), {
-          type: 'bar',
-          data: {
-            labels: top.map(function (d) { return d.label; }),
-            datasets: [
-              { label: 'Followers (%)', data: top.map(function (d) { return d.percentage; }), backgroundColor: ACCENT + 'cc', borderRadius: 4 }
-            ]
-          },
-          options: {
-            indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-            scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
-          }
-        });
-      } else { noData('wrap-jobtitles'); }
+      function initModeB() {
+        // Show logout button
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+          logoutBtn.style.display = 'inline-flex';
+          logoutBtn.addEventListener('click', function () {
+            clearToken();
+            showLogin();
+          });
+        }
 
-      // Industries doughnut
-      if (demographics?.industries && demographics.industries.length > 0) {
-        const ind = demographics.industries.slice(0, 8);
-        new Chart(document.getElementById('chart-industries'), {
-          type: 'doughnut',
-          data: {
-            labels: ind.map(function (d) { return d.label; }),
-            datasets: [
-              { data: ind.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, ind.length), borderWidth: 0, hoverOffset: 6 }
-            ]
-          },
-          options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
-        });
-      } else { noData('wrap-industries'); }
+        // Set up login form
+        const loginBtn = document.getElementById('login-btn');
+        const pwInput = document.getElementById('login-password');
 
-      // Seniority doughnut
-      if (demographics?.seniorities && demographics.seniorities.length > 0) {
-        const sen = demographics.seniorities.slice(0, 8);
-        new Chart(document.getElementById('chart-seniority'), {
-          type: 'doughnut',
-          data: {
-            labels: sen.map(function (d) { return d.label; }),
-            datasets: [
-              { data: sen.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, sen.length), borderWidth: 0, hoverOffset: 6 }
-            ]
-          },
-          options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
-        });
-      } else { noData('wrap-seniority'); }
+        if (loginBtn) {
+          loginBtn.addEventListener('click', function () {
+            const pw = pwInput ? pwInput.value : '';
+            if (pw) doLogin(pw);
+          });
+        }
+        if (pwInput) {
+          pwInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+              const pw = pwInput.value;
+              if (pw) doLogin(pw);
+            }
+          });
+        }
 
-      // Locations h-bar
-      if (demographics?.locations && demographics.locations.length > 0) {
-        const loc = demographics.locations.slice(0, 12);
-        new Chart(document.getElementById('chart-locations'), {
-          type: 'bar',
-          data: {
-            labels: loc.map(function (d) { return d.label; }),
-            datasets: [
-              { label: 'Followers (%)', data: loc.map(function (d) { return d.percentage; }), backgroundColor: TEAL + 'cc', borderRadius: 4 }
-            ]
-          },
-          options: {
-            indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-            scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
-          }
-        });
-      } else { noData('wrap-locations'); }
+        initDatePicker();
+
+        // Check for existing valid token
+        const token = getToken();
+        if (token) {
+          const range = getDefaultRange();
+          loadApiData(range.from, range.to);
+        } else {
+          showLogin();
+        }
+      }
+
+      // ── Boot ──────────────────────────────────────────────────────────────────
+
+      if (IS_API_MODE) {
+        initModeB();
+      } else {
+        initModeA();
+      }
 
     })();
   </script>
