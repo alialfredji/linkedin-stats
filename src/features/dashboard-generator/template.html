@@ -385,7 +385,9 @@
     }
 
     @keyframes spin {
-      to { transform: rotate(360deg); }
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     @media print {
@@ -493,8 +495,10 @@
           <div class="chart-card-header">
             <div class="chart-card-title">Impressions Over Time</div>
             <div class="toggle-group">
-              <button class="toggle-btn active" id="toggle-impressions-daily" onclick="setView('impressions', 'daily', this)">Daily</button>
-              <button class="toggle-btn" id="toggle-impressions-cumulative" onclick="setView('impressions', 'cumulative', this)">Cumulative</button>
+              <button class="toggle-btn active" id="toggle-impressions-daily"
+                onclick="setView('impressions', 'daily', this)">Daily</button>
+              <button class="toggle-btn" id="toggle-impressions-cumulative"
+                onclick="setView('impressions', 'cumulative', this)">Cumulative</button>
             </div>
           </div>
           <div id="wrap-impressions"><canvas id="chart-impressions" height="200"></canvas></div>
@@ -503,8 +507,10 @@
           <div class="chart-card-header">
             <div class="chart-card-title">Follower Growth</div>
             <div class="toggle-group">
-              <button class="toggle-btn active" id="toggle-followers-daily" onclick="setView('followers', 'daily', this)">Daily</button>
-              <button class="toggle-btn" id="toggle-followers-cumulative" onclick="setView('followers', 'cumulative', this)">Cumulative</button>
+              <button class="toggle-btn active" id="toggle-followers-daily"
+                onclick="setView('followers', 'daily', this)">Daily</button>
+              <button class="toggle-btn" id="toggle-followers-cumulative"
+                onclick="setView('followers', 'cumulative', this)">Cumulative</button>
             </div>
           </div>
           <div id="wrap-followers"><canvas id="chart-followers" height="200"></canvas></div>
@@ -518,8 +524,10 @@
         <div class="chart-card-header">
           <div class="chart-card-title">Impressions vs Engagements</div>
           <div class="toggle-group">
-            <button class="toggle-btn active" id="toggle-engagement-daily" onclick="setEngagementView('daily', this)">Daily</button>
-            <button class="toggle-btn" id="toggle-engagement-cumulative" onclick="setEngagementView('cumulative', this)">Cumulative</button>
+            <button class="toggle-btn active" id="toggle-engagement-daily"
+              onclick="setEngagementView('daily', this)">Daily</button>
+            <button class="toggle-btn" id="toggle-engagement-cumulative"
+              onclick="setEngagementView('cumulative', this)">Cumulative</button>
           </div>
         </div>
         <div id="wrap-engagement"><canvas id="chart-engagement" height="160"></canvas></div>
@@ -605,7 +613,7 @@
       function showLoading(show) {
         const el = document.getElementById('loading-overlay');
         if (!el) return;
-        if (show) { el.classList.add('visible'); } else { el.classList.remove('visible'); }
+        if (show) {el.classList.add('visible');} else {el.classList.remove('visible');}
       }
 
       // ── Toggle helpers ────────────────────────────────────────────────────────
@@ -613,7 +621,7 @@
       function activateToggle(btn) {
         const group = btn.closest('.toggle-group');
         if (!group) return;
-        group.querySelectorAll('.toggle-btn').forEach(function (b) { b.classList.remove('active'); });
+        group.querySelectorAll('.toggle-btn').forEach(function (b) {b.classList.remove('active');});
         btn.classList.add('active');
       }
 
@@ -627,16 +635,16 @@
             ? (currentContent?.impressionsCumulative)
             : (currentContent?.impressions);
           if (!src || src.length === 0) return;
-          chart.data.labels = src.map(function (d) { return d.date; });
-          chart.data.datasets[0].data = src.map(function (d) { return d.value; });
+          chart.data.labels = src.map(function (d) {return d.date;});
+          chart.data.datasets[0].data = src.map(function (d) {return d.value;});
           chart.data.datasets[0].label = view === 'cumulative' ? 'Impressions (Cumulative)' : 'Impressions';
         } else if (chartKey === 'followers') {
           const fsrc = view === 'cumulative'
             ? (currentAudience?.followerGrowthCumulative)
             : (currentAudience?.followerGrowth);
           if (!fsrc || fsrc.length === 0) return;
-          chart.data.labels = fsrc.map(function (d) { return d.date; });
-          chart.data.datasets[0].data = fsrc.map(function (d) { return d.value; });
+          chart.data.labels = fsrc.map(function (d) {return d.date;});
+          chart.data.datasets[0].data = fsrc.map(function (d) {return d.value;});
           chart.data.datasets[0].label = view === 'cumulative' ? 'New Followers (Cumulative)' : 'New Followers';
         }
 
@@ -657,16 +665,16 @@
 
         if (!impSrc || impSrc.length === 0) return;
 
-        const labels = impSrc.map(function (d) { return d.date; });
+        const labels = impSrc.map(function (d) {return d.date;});
         const engVals = engSrc && engSrc.length > 0
           ? labels.map(function (date) {
-            const match = engSrc.find(function (e) { return e.date === date; });
+            const match = engSrc.find(function (e) {return e.date === date;});
             return match ? match.value : 0;
           })
           : new Array(labels.length).fill(0);
 
         chart.data.labels = labels;
-        chart.data.datasets[0].data = impSrc.map(function (d) { return d.value; });
+        chart.data.datasets[0].data = impSrc.map(function (d) {return d.value;});
         chart.data.datasets[0].label = view === 'cumulative' ? 'Impressions (Cumulative)' : 'Impressions';
         chart.data.datasets[1].data = engVals;
         chart.data.datasets[1].label = view === 'cumulative' ? 'Engagements (Cumulative)' : 'Engagements';
@@ -706,7 +714,7 @@
 
         // Destroy old charts
         Object.keys(charts).forEach(function (k) {
-          if (charts[k] && typeof charts[k].destroy === 'function') { charts[k].destroy(); }
+          if (charts[k] && typeof charts[k].destroy === 'function') {charts[k].destroy();}
         });
         charts = {};
 
@@ -724,55 +732,55 @@
           charts['impressions'] = new Chart(document.getElementById('chart-impressions'), {
             type: 'line',
             data: {
-              labels: content.impressions.map(function (d) { return d.date; }),
+              labels: content.impressions.map(function (d) {return d.date;}),
               datasets: [{
                 label: 'Impressions',
-                data: content.impressions.map(function (d) { return d.value; }),
+                data: content.impressions.map(function (d) {return d.value;}),
                 borderColor: ACCENT, backgroundColor: ACCENT + '22', fill: true, tension: 0.3, pointRadius: 3
               }]
             },
             options: {
               responsive: true,
-              interaction: { mode: 'index', intersect: false },
-              plugins: { legend: { display: false } },
+              interaction: {mode: 'index', intersect: false},
+              plugins: {legend: {display: false}},
               scales: {
-                x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
-                y: { grid: { color: '#313244' }, beginAtZero: true }
+                x: {grid: {color: '#313244'}, ticks: {maxRotation: 45}},
+                y: {grid: {color: '#313244'}, beginAtZero: true}
               }
             }
           });
-        } else { noData('wrap-impressions'); }
+        } else {noData('wrap-impressions');}
 
         // Follower growth line
         if (audience?.followerGrowth && audience.followerGrowth.length > 0) {
           charts['followers'] = new Chart(document.getElementById('chart-followers'), {
             type: 'line',
             data: {
-              labels: audience.followerGrowth.map(function (d) { return d.date; }),
+              labels: audience.followerGrowth.map(function (d) {return d.date;}),
               datasets: [{
                 label: 'New Followers',
-                data: audience.followerGrowth.map(function (d) { return d.value; }),
+                data: audience.followerGrowth.map(function (d) {return d.value;}),
                 borderColor: SUCCESS, backgroundColor: SUCCESS + '22', fill: true, tension: 0.3, pointRadius: 3
               }]
             },
             options: {
               responsive: true,
-              interaction: { mode: 'index', intersect: false },
-              plugins: { legend: { display: false } },
+              interaction: {mode: 'index', intersect: false},
+              plugins: {legend: {display: false}},
               scales: {
-                x: { grid: { color: '#313244' }, ticks: { maxRotation: 45 } },
-                y: { grid: { color: '#313244' }, beginAtZero: true }
+                x: {grid: {color: '#313244'}, ticks: {maxRotation: 45}},
+                y: {grid: {color: '#313244'}, beginAtZero: true}
               }
             }
           });
-        } else { noData('wrap-followers'); }
+        } else {noData('wrap-followers');}
 
         // Engagement bar
         if (content?.impressions && content.impressions.length > 0) {
-          const labels = content.impressions.map(function (d) { return d.date; });
+          const labels = content.impressions.map(function (d) {return d.date;});
           const engVals = content.engagements && content.engagements.length > 0
             ? labels.map(function (date) {
-              const match = (content.engagements || []).find(function (e) { return e.date === date; });
+              const match = (content.engagements || []).find(function (e) {return e.date === date;});
               return match ? match.value : 0;
             })
             : new Array(labels.length).fill(0);
@@ -781,21 +789,21 @@
             data: {
               labels: labels,
               datasets: [
-                { label: 'Impressions', data: content.impressions.map(function (d) { return d.value; }), backgroundColor: ACCENT + 'bb', borderRadius: 4 },
-                { label: 'Engagements', data: engVals, backgroundColor: SUCCESS + 'bb', borderRadius: 4 }
+                {label: 'Impressions', data: content.impressions.map(function (d) {return d.value;}), backgroundColor: ACCENT + 'bb', borderRadius: 4},
+                {label: 'Engagements', data: engVals, backgroundColor: SUCCESS + 'bb', borderRadius: 4}
               ]
             },
             options: {
               responsive: true,
-              interaction: { mode: 'index', intersect: false },
-              plugins: { legend: { display: true } },
+              interaction: {mode: 'index', intersect: false},
+              plugins: {legend: {display: true}},
               scales: {
-                x: { grid: { color: '#313244' } },
-                y: { grid: { color: '#313244' }, beginAtZero: true }
+                x: {grid: {color: '#313244'}},
+                y: {grid: {color: '#313244'}, beginAtZero: true}
               }
             }
           });
-        } else { noData('wrap-engagement'); }
+        } else {noData('wrap-engagement');}
 
         // Job titles h-bar
         if (demographics?.jobTitles && demographics.jobTitles.length > 0) {
@@ -803,17 +811,17 @@
           new Chart(document.getElementById('chart-jobtitles'), {
             type: 'bar',
             data: {
-              labels: top.map(function (d) { return d.label; }),
+              labels: top.map(function (d) {return d.label;}),
               datasets: [
-                { label: 'Followers (%)', data: top.map(function (d) { return d.percentage; }), backgroundColor: ACCENT + 'cc', borderRadius: 4 }
+                {label: 'Followers (%)', data: top.map(function (d) {return d.percentage;}), backgroundColor: ACCENT + 'cc', borderRadius: 4}
               ]
             },
             options: {
-              indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-              scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
+              indexAxis: 'y', responsive: true, plugins: {legend: {display: false}},
+              scales: {x: {grid: {color: '#313244'}, beginAtZero: true, ticks: {callback: function (v) {return v + '%';}}}, y: {grid: {display: false}}}
             }
           });
-        } else { noData('wrap-jobtitles'); }
+        } else {noData('wrap-jobtitles');}
 
         // Industries doughnut
         if (demographics?.industries && demographics.industries.length > 0) {
@@ -821,14 +829,14 @@
           new Chart(document.getElementById('chart-industries'), {
             type: 'doughnut',
             data: {
-              labels: ind.map(function (d) { return d.label; }),
+              labels: ind.map(function (d) {return d.label;}),
               datasets: [
-                { data: ind.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, ind.length), borderWidth: 0, hoverOffset: 6 }
+                {data: ind.map(function (d) {return d.percentage;}), backgroundColor: PALETTE.slice(0, ind.length), borderWidth: 0, hoverOffset: 6}
               ]
             },
-            options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+            options: {responsive: true, cutout: '60%', plugins: {legend: {position: 'bottom', labels: {boxWidth: 10, padding: 8, font: {size: 11}}}}}
           });
-        } else { noData('wrap-industries'); }
+        } else {noData('wrap-industries');}
 
         // Seniority doughnut
         if (demographics?.seniorities && demographics.seniorities.length > 0) {
@@ -836,14 +844,14 @@
           new Chart(document.getElementById('chart-seniority'), {
             type: 'doughnut',
             data: {
-              labels: sen.map(function (d) { return d.label; }),
+              labels: sen.map(function (d) {return d.label;}),
               datasets: [
-                { data: sen.map(function (d) { return d.percentage; }), backgroundColor: PALETTE.slice(0, sen.length), borderWidth: 0, hoverOffset: 6 }
+                {data: sen.map(function (d) {return d.percentage;}), backgroundColor: PALETTE.slice(0, sen.length), borderWidth: 0, hoverOffset: 6}
               ]
             },
-            options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } } } }
+            options: {responsive: true, cutout: '60%', plugins: {legend: {position: 'bottom', labels: {boxWidth: 10, padding: 8, font: {size: 11}}}}}
           });
-        } else { noData('wrap-seniority'); }
+        } else {noData('wrap-seniority');}
 
         // Locations h-bar
         if (demographics?.locations && demographics.locations.length > 0) {
@@ -851,24 +859,24 @@
           new Chart(document.getElementById('chart-locations'), {
             type: 'bar',
             data: {
-              labels: loc.map(function (d) { return d.label; }),
+              labels: loc.map(function (d) {return d.label;}),
               datasets: [
-                { label: 'Followers (%)', data: loc.map(function (d) { return d.percentage; }), backgroundColor: TEAL + 'cc', borderRadius: 4 }
+                {label: 'Followers (%)', data: loc.map(function (d) {return d.percentage;}), backgroundColor: TEAL + 'cc', borderRadius: 4}
               ]
             },
             options: {
-              indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
-              scales: { x: { grid: { color: '#313244' }, beginAtZero: true, ticks: { callback: function (v) { return v + '%'; } } }, y: { grid: { display: false } } }
+              indexAxis: 'y', responsive: true, plugins: {legend: {display: false}},
+              scales: {x: {grid: {color: '#313244'}, beginAtZero: true, ticks: {callback: function (v) {return v + '%';}}}, y: {grid: {display: false}}}
             }
           });
-        } else { noData('wrap-locations'); }
+        } else {noData('wrap-locations');}
       }
 
       // ── Mode A: embedded JSON (local dev) ─────────────────────────────────────
 
       function initModeA() {
         let data = {};
-        try { data = JSON.parse(rawText); } catch (_e) { /* empty */ }
+        try {data = JSON.parse(rawText);} catch (_e) { /* empty */}
         currentContent = data.content || null;
         currentAudience = data.audience || null;
         currentDemographics = data.demographics || null;
@@ -876,7 +884,7 @@
         const scrapedAt = data.scrapedAt || null;
         if (scrapedAt) {
           const dt = new Date(scrapedAt);
-          const label = dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const label = dt.toLocaleString('en-US', {month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'});
           setText('scraped-at-label', 'Last scraped: ' + label);
         }
 
@@ -924,7 +932,7 @@
         const to = new Date();
         const from = new Date();
         from.setDate(from.getDate() - 30);
-        return { from: dateString(from), to: dateString(to) };
+        return {from: dateString(from), to: dateString(to)};
       }
 
       function initDatePicker() {
@@ -946,7 +954,7 @@
       }
 
       async function apiGet(path, token) {
-        const res = await fetch(path, { headers: { 'Authorization': 'Bearer ' + token } });
+        const res = await fetch(path, {headers: {'Authorization': 'Bearer ' + token}});
         if (res.status === 401) {
           clearToken();
           showLogin();
@@ -958,7 +966,7 @@
 
       async function loadApiData(fromDate, toDate) {
         const token = getToken();
-        if (!token) { showLogin(); return; }
+        if (!token) {showLogin(); return;}
         showLoading(true);
         try {
           const qs = '?from=' + fromDate + '&to=' + toDate;
@@ -989,8 +997,8 @@
         try {
           const res = await fetch('/api/auth/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: password }),
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: password}),
           });
           if (!res.ok) {
             showLoginError('Incorrect password. Please try again.');

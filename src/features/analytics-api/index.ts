@@ -23,8 +23,7 @@ import { buildRouter } from './routes.js';
 
 const FEATURE_NAME = 'analytics-api';
 const DEFAULT_PORT = 3000;
-const DEFAULT_HTML_PATH = './output/dashboard.html';
-
+const DEFAULT_HTML_PATH = './src/features/dashboard-generator/template.html';
 export default ({ registerAction }: RegisterContext) => {
   registerAction({
     hook: '$INIT_FEATURE',

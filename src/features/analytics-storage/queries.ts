@@ -99,13 +99,17 @@ export async function getAudienceMetrics(
 
 export async function getDemographicsSnapshot(
   client: SupabaseClient,
-  date: string = defaultTo()
+  date?: string
 ): Promise<DemographicsSnapshot | null> {
-  const { data, error } = await client
+  const builder = client
     .from('demographics_snapshots')
     .select('date, industries, job_titles, seniorities, functions, locations')
-    .eq('date', date)
-    .maybeSingle();
+    .order('date', { ascending: false })
+    .limit(1);
+
+  // If a specific date is requested, filter to that exact date.
+  // Otherwise fall back to the most recent available snapshot.
+  const { data, error } = await (date ? builder.eq('date', date) : builder).maybeSingle();
 
   if (error) throw new Error(`getDemographicsSnapshot failed: ${error.message}`);
   if (!data) return null;

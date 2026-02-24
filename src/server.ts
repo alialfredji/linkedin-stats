@@ -13,7 +13,7 @@
  *   SUPABASE_ANON_KEY     - Supabase anon / public key
  *
  * Optional environment variables:
- *   DASHBOARD_HTML_PATH   - Path to the dashboard HTML (default: ./output/dashboard.html)
+ *   DASHBOARD_HTML_PATH   - Path to the dashboard HTML (default: ./src/features/dashboard-generator/template.html)
  */
 import 'dotenv/config';
 
@@ -36,7 +36,8 @@ hookApp({
       port: Number(process.env['PORT'] ?? 3000),
       jwtSecret: process.env['JWT_SECRET'] ?? '',
       password: process.env['DASHBOARD_PASSWORD'] ?? '',
-      htmlPath: process.env['DASHBOARD_HTML_PATH'] ?? './output/dashboard.html',
+      htmlPath:
+        process.env['DASHBOARD_HTML_PATH'] ?? './src/features/dashboard-generator/template.html',
     },
   },
   services: [supabaseService],
